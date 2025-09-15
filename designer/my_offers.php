@@ -344,9 +344,14 @@ function getStatusInfo($status)
                                             </button>
 
                                         <?php elseif ($offer['status'] === 'proposed'): ?>
+                                            <a href="#" class="view-details-btn w-full sm:w-auto text-center px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-semibold hover:bg-slate-700" data-request-id="<?= $offer['request_id'] ?>">
+                                                <i class="fa-solid fa-search mr-1"></i> ดูรายละเอียดงาน
+                                            </a>
 
-                                            <button disabled class="w-full sm:w-auto text-center px-4 py-2 bg-slate-200 text-slate-500 rounded-lg text-sm font-semibold cursor-not-allowed">
-                                                <i class="fa-solid fa-hourglass-half mr-1"></i> รอการอนุมัติ
+                                            <button
+                                                data-request-id="<?= $offer['request_id'] ?>"
+                                                class="view-proposal-btn w-full sm:w-auto text-center px-4 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold hover:bg-purple-600 transition-colors">
+                                                <i class="fa-solid fa-eye mr-1"></i> ดูใบเสนอราคาของฉัน
                                             </button>
 
                                             <a href="../messages.php?to_user=<?= $offer['client_id'] ?>"
@@ -433,6 +438,11 @@ function getStatusInfo($status)
                                 <div>
                                     <label for="offered_price" class="block text-sm font-bold text-gray-700">เสนอราคา (บาท)</label>
                                     <input type="number" id="offered_price" name="offered_price" min="0" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="ระบุราคาที่คุณเสนอสำหรับงานนี้">
+                                </div>
+
+                                <div id="deposit-calculation" class="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800" style="display: none;">
+                                    <p>ยอดมัดจำ 20%: <strong id="deposit-amount" class="font-bold">0.00</strong> บาท</p>
+                                    <p class="text-xs text-blue-600 mt-1">ยอดนี้จะถูกเรียกเก็บจากผู้ว่าจ้างเมื่อมีการตกลงจ้างงาน</p>
                                 </div>
                             </div>
                         </div>
@@ -557,6 +567,141 @@ function getStatusInfo($status)
             // --- 3. จัดการการคลิกปุ่ม ปฏิเสธ ---
             $('.offer-action-btn').on('click', function() {
                 // ... (โค้ดส่วนนี้เหมือนเดิม) ...
+            });
+            // เมื่อมีการพิมพ์ในช่อง "เสนอราคา"
+            $('#proposal-form').on('input', '#offered_price', function() {
+                const price = parseFloat($(this).val());
+                const depositContainer = $('#deposit-calculation');
+                const depositAmountSpan = $('#deposit-amount');
+
+                if (price && price > 0) {
+                    // คำนวณ 20%
+                    const deposit = price * 0.20;
+                    // จัดรูปแบบตัวเลขให้มีทศนิยม 2 ตำแหน่งและมีจุลภาค
+                    const formattedDeposit = deposit.toLocaleString('th-TH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+
+                    depositAmountSpan.text(formattedDeposit); // แสดงผล
+                    depositContainer.slideDown(); // แสดงกล่อง
+                } else {
+                    depositContainer.slideUp(); // ซ่อนกล่องถ้าไม่มีราคา
+                }
+            });
+
+            // --- [เพิ่มโค้ดส่วนนี้] --- 
+            // Clear ค่ามัดจำเมื่อปิด Modal
+            $('[data-modal-hide="offerModal"], [data-dismiss="modal"], .btn-cancel, [x-show="isModalOpen"]').on('click', function() {
+                $('#deposit-calculation').hide();
+                $('#deposit-amount').text('0.00');
+            });
+
+            // --- [แก้ไข] เมื่อคลิกปุ่ม "ดูใบเสนอราคาของฉัน" ---
+            $('.view-proposal-btn').on('click', function(e) {
+                e.preventDefault();
+                const requestId = $(this).data('request-id');
+
+                Swal.fire({
+                    title: 'กำลังโหลดข้อมูล...',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+
+                $.ajax({
+                    url: '../get_proposal_details.php',
+                    method: 'GET',
+                    data: {
+                        request_id: requestId
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            const details = response.data;
+                            const offeredPrice = parseFloat(details.offered_price);
+
+                            // คำนวณมัดจำ 20%
+                            const deposit = offeredPrice * 0.20;
+
+                            // จัดรูปแบบตัวเลขทั้งหมด
+                            const formattedOfferedPrice = offeredPrice.toLocaleString('th-TH', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            });
+                            const formattedDeposit = deposit.toLocaleString('th-TH', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            });
+                            const applicationDate = new Date(details.application_date).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+
+                            // สร้าง HTML ให้เหมือนฟอร์ม
+                            const proposalHtml = `
+                    <div class="text-center mb-6">
+                        <h3 class="text-2xl leading-6 font-bold text-gray-900">ใบเสนอราคา (ที่ยื่นไปแล้ว)</h3>
+                        <p class="mt-1 text-sm text-gray-500">นี่คือรายละเอียดที่คุณได้ยื่นเสนอไป</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-6 text-left">
+                        <div>
+                            <p class="font-semibold text-gray-800">จาก (นักออกแบบ):</p>
+                            <p><?php echo htmlspecialchars($loggedInUserName); ?></p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-semibold text-gray-800">ถึง (ผู้ว่าจ้าง):</p>
+                            <p>${details.client_name || ''}</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-gray-800">เลขที่คำขอ:</p>
+                            <p>#${requestId}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-semibold text-gray-800">วันที่เสนอราคา:</p>
+                            <p>${applicationDate}</p>
+                        </div>
+                    </div>
+                    <hr class="my-6">
+                    <div class="space-y-5 text-left">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">ชื่องาน / โปรเจกต์</label>
+                            <div class="mt-1 p-3 bg-slate-100 border border-gray-300 rounded-md">${details.job_title}</div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">ข้อความถึงผู้ว่าจ้าง</label>
+                            <div class="mt-1 p-3 bg-slate-100 border border-gray-300 rounded-md min-h-[80px]">${details.proposal_text || '<em>ไม่ได้ระบุข้อความเพิ่มเติม</em>'}</div>
+                        </div>
+                        <hr class="my-6 border-t-2 border-dashed">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">ราคาที่เสนอ (บาท)</label>
+                            <div class="mt-1 p-3 bg-slate-100 border border-gray-300 rounded-md font-bold text-green-600">${formattedOfferedPrice}</div>
+                        </div>
+                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800">
+                            <p>ยอดมัดจำ 20%: <strong class="font-bold">${formattedDeposit}</strong> บาท</p>
+                        </div>
+                    </div>
+                `;
+
+                            Swal.fire({
+                                html: proposalHtml,
+                                showConfirmButton: true,
+                                confirmButtonText: 'ปิด',
+                                width: '600px' // หรือ 'max-w-2xl'
+                            });
+
+                        } else {
+                            Swal.fire('เกิดข้อผิดพลาด', response.message, 'error');
+                        }
+                    },
+                    error: function() {
+                        Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลใบเสนอราคาได้', 'error');
+                    }
+                });
             });
         });
     </script>
