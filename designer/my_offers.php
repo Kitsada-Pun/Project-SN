@@ -66,13 +66,20 @@ if ($stmt) {
     die("เกิดข้อผิดพลาดในการดึงข้อมูล");
 }
 // นับจำนวนข้อเสนอที่รอการตอบรับจากข้อมูลที่มีอยู่แล้ว
-$pending_offers_count = 0;
-$submitted_offers_count = 0;
+// --- [เพิ่มเข้ามา] นับจำนวนงานในแต่ละสถานะ ---
+$counts = [
+    'pending' => 0,   // status 'open'
+    'submitted' => 0, // status 'proposed'
+    'active' => 0,    // status 'assigned'
+    'completed' => 0, // status 'completed'
+    'cancelled' => 0, // status 'cancelled'
+];
+
 foreach ($offers as $offer) {
-    if ($offer['status'] === 'open') {
-        $pending_offers_count++;
-    } elseif ($offer['status'] === 'proposed') {
-        $submitted_offers_count++;
+    $statusInfo = getStatusInfo($offer['status']);
+    $tabKey = $statusInfo['tab'];
+    if (isset($counts[$tabKey])) {
+        $counts[$tabKey]++;
     }
 }
 $conn->close();
@@ -253,9 +260,9 @@ function getStatusInfo($status)
                 <button @click="tab = 'pending'" :class="tab === 'pending' ? 'bg-white text-yellow-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
                     <i class="fa-solid fa-inbox mr-1.5"></i>
                     <span>ข้อเสนองาน</span>
-                    <?php if ($pending_offers_count > 0): ?>
+                    <?php if ($counts['pending'] > 0): ?>
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-xs font-bold text-white">
-                            <?= $pending_offers_count ?>
+                            <?= $counts['pending'] ?>
                         </span>
                     <?php endif; ?>
                 </button>
@@ -263,9 +270,9 @@ function getStatusInfo($status)
                 <button @click="tab = 'submitted'" :class="tab === 'submitted' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
                     <i class="fa-solid fa-paper-plane mr-1.5"></i>
                     <span>ยื่นใบเสนอราคา</span>
-                    <?php if ($submitted_offers_count > 0): ?>
+                    <?php if ($counts['submitted'] > 0): ?>
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500 text-xs font-bold text-white">
-                            <?= $submitted_offers_count ?>
+                            <?= $counts['submitted'] ?>
                         </span>
                     <?php endif; ?>
                 </button>
@@ -289,7 +296,9 @@ function getStatusInfo($status)
                         <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มีข้อเสนองานเข้ามา</h3>
                         <p class="mt-1 text-slate-500">เมื่อมีผู้ว่าจ้างสนใจคุณ ข้อเสนอจะแสดงที่นี่</p>
                     </div>
+
                 <?php else: ?>
+
                     <?php foreach ($offers as $offer): ?>
                         <?php
                         $statusInfo = getStatusInfo($offer['status']);
@@ -379,85 +388,115 @@ function getStatusInfo($status)
                         </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
-            </div>
-            <div x-show="isModalOpen" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4 py-6" style="display: none;">
+                <div x-show="tab === 'pending' && <?= $counts['pending'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                    <i class="fa-solid fa-inbox fa-2x text-slate-400"></i>
+                    <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มีข้อเสนองานใหม่</h3>
+                    <p class="mt-1 text-slate-500">เมื่อมีผู้ว่าจ้างส่งคำขอจ้างงานให้คุณโดยตรง จะแสดงที่นี่</p>
+                </div>
 
-                <div @click.away="isModalOpen = false" class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-full overflow-y-auto">
+                <div x-show="tab === 'submitted' && <?= $counts['submitted'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                    <i class="fa-solid fa-paper-plane fa-2x text-slate-400"></i>
+                    <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มียื่นใบเสนอราคา</h3>
+                    <p class="mt-1 text-slate-500">รายการที่คุณยื่นเสนอราคาไปแล้วจะแสดงที่นี่</p>
+                </div>
 
-                    <form id="proposal-form" action="submit_proposal.php" method="POST">
-                        <div class="px-6 py-5 sm:p-8">
-                            <div class="text-center mb-6">
-                                <h3 class="text-2xl leading-6 font-bold text-gray-900">
-                                    ใบเสนอราคา
-                                </h3>
-                                <p class="mt-1 text-sm text-gray-500">ตรวจสอบรายละเอียดและกรอกราคาที่คุณเสนอ</p>
-                            </div>
+                <div x-show="tab === 'active' && <?= $counts['active'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                    <i class="fa-solid fa-person-digging fa-2x text-slate-400"></i>
+                    <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มีงานที่กำลังดำเนินการ</h3>
+                    <p class="mt-1 text-slate-500">งานที่ผู้ว่าจ้างตอบตกลงแล้วจะแสดงที่นี่</p>
+                </div>
 
-                            <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-6">
-                                <div>
-                                    <p class="font-semibold text-gray-800">จาก (นักออกแบบ):</p>
-                                    <p><?php echo htmlspecialchars($loggedInUserName); ?></p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="font-semibold text-gray-800">ถึง (ผู้ว่าจ้าง):</p>
-                                    <p x-text="modalData.client_name"></p>
-                                </div>
-                                <div>
-                                    <p class="font-semibold text-gray-800">เลขที่คำขอ:</p>
-                                    <p>#<span x-text="modalData.request_id"></span></p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="font-semibold text-gray-800">วันที่เสนอราคา:</p>
-                                    <p><?php echo date("d / m / Y"); ?></p>
-                                </div>
-                            </div>
+                <div x-show="tab === 'completed' && <?= $counts['completed'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                    <i class="fa-solid fa-circle-check fa-2x text-slate-400"></i>
+                    <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มีงานที่เสร็จสมบูรณ์</h3>
+                    <p class="mt-1 text-slate-500">งานที่คุณทำเสร็จแล้วจะถูกย้ายมาที่นี่</p>
+                </div>
 
-                            <hr class="my-6">
-
-                            <div class="space-y-5">
-                                <input type="hidden" name="request_id" :value="modalData.request_id">
-                                <input type="hidden" name="client_id" :value="modalData.client_id">
-
-                                <div>
-                                    <label class="block text-sm font-bold text-gray-700">ชื่องาน / โปรเจกต์</label>
-                                    <input type="text" :value="modalData.title" class="mt-1 block w-full px-3 py-2 bg-slate-100 border border-gray-300 rounded-md shadow-sm" readonly>
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-bold text-gray-700">รายละเอียดที่ผู้ว่าจ้างแจ้ง</label>
-                                    <div x-text="modalData.description" class="mt-1 block w-full p-3 bg-slate-100 border border-gray-300 rounded-md shadow-sm text-sm text-gray-600 min-h-[80px]"></div>
-                                </div>
-
-                                <hr class="my-6 border-t-2 border-dashed">
-
-                                <div>
-                                    <label for="proposal_text" class="block text-sm font-bold text-gray-700">ข้อความถึงผู้ว่าจ้าง (Optional)</label>
-                                    <textarea id="proposal_text" name="proposal_text" rows="4" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำแนวทางการทำงาน, สิ่งที่คุณจะทำให้, หรือรายละเอียดอื่นๆ เพิ่มเติม..."></textarea>
-                                </div>
-
-                                <div>
-                                    <label for="offered_price" class="block text-sm font-bold text-gray-700">เสนอราคา (บาท)</label>
-                                    <input type="number" id="offered_price" name="offered_price" min="0" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="ระบุราคาที่คุณเสนอสำหรับงานนี้">
-                                </div>
-
-                                <div id="deposit-calculation" class="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800" style="display: none;">
-                                    <p>ยอดมัดจำ 20%: <strong id="deposit-amount" class="font-bold">0.00</strong> บาท</p>
-                                    <p class="text-xs text-blue-600 mt-1">ยอดนี้จะถูกเรียกเก็บจากผู้ว่าจ้างเมื่อมีการตกลงจ้างงาน</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-gray-100 px-4 py-4 sm:px-8 sm:flex sm:flex-row-reverse rounded-b-xl">
-                            <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 sm:ml-3 sm:w-auto sm:text-sm">
-                                <i class="fas fa-paper-plane mr-2"></i>ส่งใบเสนอราคา
-                            </button>
-                            <button type="button" @click="isModalOpen = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
-                                ยกเลิก
-                            </button>
-                        </div>
-                    </form>
+                <div x-show="tab === 'cancelled' && <?= $counts['cancelled'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                    <i class="fa-solid fa-circle-xmark fa-2x text-slate-400"></i>
+                    <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่ถูกยกเลิก</h3>
+                    <p class="mt-1 text-slate-500">รายการงานที่ถูกยกเลิกจะแสดงที่นี่</p>
                 </div>
             </div>
+        </div>
+        <div x-show="isModalOpen" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4 py-6" style="display: none;">
+
+            <div @click.away="isModalOpen = false" class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-full overflow-y-auto">
+
+                <form id="proposal-form" action="submit_proposal.php" method="POST">
+                    <div class="px-6 py-5 sm:p-8">
+                        <div class="text-center mb-6">
+                            <h3 class="text-2xl leading-6 font-bold text-gray-900">
+                                ใบเสนอราคา
+                            </h3>
+                            <p class="mt-1 text-sm text-gray-500">ตรวจสอบรายละเอียดและกรอกราคาที่คุณเสนอ</p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-6">
+                            <div>
+                                <p class="font-semibold text-gray-800">จาก (นักออกแบบ):</p>
+                                <p><?php echo htmlspecialchars($loggedInUserName); ?></p>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-semibold text-gray-800">ถึง (ผู้ว่าจ้าง):</p>
+                                <p x-text="modalData.client_name"></p>
+                            </div>
+                            <div>
+                                <p class="font-semibold text-gray-800">เลขที่คำขอ:</p>
+                                <p>#<span x-text="modalData.request_id"></span></p>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-semibold text-gray-800">วันที่เสนอราคา:</p>
+                                <p><?php echo date("d / m / Y"); ?></p>
+                            </div>
+                        </div>
+
+                        <hr class="my-6">
+
+                        <div class="space-y-5">
+                            <input type="hidden" name="request_id" :value="modalData.request_id">
+                            <input type="hidden" name="client_id" :value="modalData.client_id">
+
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">ชื่องาน / โปรเจกต์</label>
+                                <input type="text" :value="modalData.title" class="mt-1 block w-full px-3 py-2 bg-slate-100 border border-gray-300 rounded-md shadow-sm" readonly>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">รายละเอียดที่ผู้ว่าจ้างแจ้ง</label>
+                                <div x-text="modalData.description" class="mt-1 block w-full p-3 bg-slate-100 border border-gray-300 rounded-md shadow-sm text-sm text-gray-600 min-h-[80px]"></div>
+                            </div>
+
+                            <hr class="my-6 border-t-2 border-dashed">
+
+                            <div>
+                                <label for="proposal_text" class="block text-sm font-bold text-gray-700">ข้อความถึงผู้ว่าจ้าง (Optional)</label>
+                                <textarea id="proposal_text" name="proposal_text" rows="4" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำแนวทางการทำงาน, สิ่งที่คุณจะทำให้, หรือรายละเอียดอื่นๆ เพิ่มเติม..."></textarea>
+                            </div>
+
+                            <div>
+                                <label for="offered_price" class="block text-sm font-bold text-gray-700">เสนอราคา (บาท)</label>
+                                <input type="number" id="offered_price" name="offered_price" min="0" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="ระบุราคาที่คุณเสนอสำหรับงานนี้">
+                            </div>
+
+                            <div id="deposit-calculation" class="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800" style="display: none;">
+                                <p>ยอดมัดจำ 20%: <strong id="deposit-amount" class="font-bold">0.00</strong> บาท</p>
+                                <p class="text-xs text-blue-600 mt-1">ยอดนี้จะถูกเรียกเก็บจากผู้ว่าจ้างเมื่อมีการตกลงจ้างงาน</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-100 px-4 py-4 sm:px-8 sm:flex sm:flex-row-reverse rounded-b-xl">
+                        <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 sm:ml-3 sm:w-auto sm:text-sm">
+                            <i class="fas fa-paper-plane mr-2"></i>ส่งใบเสนอราคา
+                        </button>
+                        <button type="button" @click="isModalOpen = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                            ยกเลิก
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
         </div>
     </main>
 
