@@ -3,7 +3,7 @@ session_start();
 header('Content-Type: application/json');
 
 // Include your database connection file
-require_once '../connect.php'; 
+require_once '../connect.php';
 
 // Check if user is a logged-in designer
 if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'designer') {
@@ -60,14 +60,13 @@ try {
         $stmt_insert_contract->bind_param("iiids", $request_id, $designer_id, $client_id, $agreed_price, $start_date);
         $stmt_insert_contract->execute();
         $stmt_insert_contract->close();
-        
-        $message = "คุณได้ยอมรับข้อเสนองาน '{$job_title}' เรียบร้อยแล้ว";
 
+        $message = "คุณได้ยอมรับข้อเสนองาน '{$job_title}' เรียบร้อยแล้ว";
     } else { // 'reject'
-        // Update job request status to 'cancelled' and remove designer assignment
-        $sql_update_req = "UPDATE client_job_requests SET status = 'open', designer_id = NULL WHERE request_id = ?";
+        // [แก้ไข] เปลี่ยน status เป็น 'rejected' และเก็บ designer_id ไว้
+        $sql_update_req = "UPDATE client_job_requests SET status = 'rejected' WHERE request_id = ? AND designer_id = ?";
         $stmt_update_req = $conn->prepare($sql_update_req);
-        $stmt_update_req->bind_param("i", $request_id);
+        $stmt_update_req->bind_param("ii", $request_id, $designer_id); // ใช้ 2 ตัวแปร
         $stmt_update_req->execute();
         $stmt_update_req->close();
 
@@ -77,7 +76,6 @@ try {
     // Commit the transaction
     $conn->commit();
     echo json_encode(['status' => 'success', 'message' => $message]);
-
 } catch (Exception $e) {
     // Rollback on error
     $conn->rollback();
@@ -85,4 +83,3 @@ try {
 }
 
 $conn->close();
-?>
