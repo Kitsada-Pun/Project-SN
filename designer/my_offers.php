@@ -12,20 +12,23 @@ require_once '../connect.php';
 $designer_id = $_SESSION['user_id'];
 $loggedInUserName = $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Designer';
 
-if (empty($_SESSION['full_name'])) {
-    $user_id = $_SESSION['user_id'];
-    $sql_user = "SELECT first_name, last_name FROM users WHERE user_id = ?";
-    $stmt_user = $conn->prepare($sql_user);
-    if ($stmt_user) {
-        $stmt_user->bind_param("i", $user_id);
-        $stmt_user->execute();
-        $result_user = $stmt_user->get_result();
-        if ($result_user->num_rows === 1) {
-            $user_info = $result_user->fetch_assoc();
-            $loggedInUserName = $user_info['first_name'] . ' ' . $user_info['last_name'];
-            $_SESSION['full_name'] = $loggedInUserName;
+// --- ดึงชื่อผู้ใช้ที่ล็อกอิน ---
+if (isset($_SESSION['user_id'])) {
+    $loggedInUserName = $_SESSION['username'] ?? $_SESSION['full_name'] ?? '';
+    if (empty($loggedInUserName)) {
+        $user_id = $_SESSION['user_id'];
+        $sql_user = "SELECT first_name, last_name FROM users WHERE user_id = ?";
+        $stmt_user = $condb->prepare($sql_user);
+        if ($stmt_user) {
+            $stmt_user->bind_param("i", $user_id);
+            $stmt_user->execute();
+            $result_user = $stmt_user->get_result();
+            if ($result_user->num_rows === 1) {
+                $user_info = $result_user->fetch_assoc();
+                $loggedInUserName = $user_info['first_name'] . ' ' . $user_info['last_name'];
+            }
+            $stmt_user->close();
         }
-        $stmt_user->close();
     }
 }
 
@@ -115,6 +118,120 @@ function getStatusInfo($status)
             -webkit-box-orient: vertical;
             -webkit-line-clamp: 2;
         }
+
+        body {
+            background: linear-gradient(135deg, #f0f4f8 0%, #e8edf3 100%);
+            color: #2c3e50;
+            overflow-x: hidden;
+        }
+
+        .navbar {
+            background-color: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #0a5f97 0%, #0d96d2 100%);
+            color: white;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(13, 150, 210, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(45deg, #0d96d2 0%, #0a5f97 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(13, 150, 210, 0.5);
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(108, 117, 125, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .btn-danger {
+            background-color: #ef4444;
+            color: white;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background-color: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.5);
+        }
+
+        .text-gradient {
+            background: linear-gradient(45deg, #0a5f97, #0d96d2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .pixellink-logo,
+        .pixellink-logo-footer {
+            font-weight: 700;
+            font-size: 2.25rem;
+            background: linear-gradient(45deg, #0a5f97, #0d96d2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .pixellink-logo b,
+        .pixellink-logo-footer b {
+            color: #0d96d2;
+        }
+
+        .card-item {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.12);
+        }
+
+        .card-image {
+            width: 100%;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            border-top-left-radius: 1rem;
+            border-top-right-radius: 1rem;
+        }
+
+        .hero-section {
+            background-image: url('dist/img/cover.png');
+            background-size: cover;
+            background-position: center;
+            position: relative;
+            z-index: 1;
+            padding: 8rem 0;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: -1;
+        }
     </style>
 </head>
 
@@ -128,7 +245,7 @@ function getStatusInfo($status)
             <p class="text-slate-500 mt-1">ติดตามและจัดการงานที่ผู้ว่าจ้างยื่นข้อเสนอให้คุณที่นี่</p>
         </div>
 
-        <div x-data="{ tab: 'all' }">
+        <div x-data="{ tab: 'all', isModalOpen: false, modalData: {} }">
             <div class="mb-6 p-1.5 bg-slate-200/60 rounded-xl flex flex-wrap items-center gap-2">
                 <button @click="tab = 'all'" :class="tab === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
                     <i class="fa-solid fa-list-ul mr-1.5"></i> ทั้งหมด
@@ -184,7 +301,9 @@ function getStatusInfo($status)
                                 <div class="flex-1">
                                     <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
                                         <h2 class="text-xl font-bold text-slate-800 leading-tight">
-                                            <a href="../job_detail.php?request_id=<?= $offer['request_id'] ?>" class="hover:text-blue-600"><?= htmlspecialchars($offer['title']) ?></a>
+                                            <a href="#" class="view-details-btn hover:text-blue-600" data-request-id="<?= $offer['request_id'] ?>">
+                                                <?= htmlspecialchars($offer['title']) ?>
+                                            </a>
                                         </h2>
                                         <span class="text-xs font-semibold px-3 py-1 rounded-full <?= $statusInfo['color'] ?>">
                                             <?= htmlspecialchars($statusInfo['text']) ?>
@@ -211,6 +330,12 @@ function getStatusInfo($status)
                                                 class="w-full sm:w-auto text-center px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors">
                                                 <i class="fa-solid fa-file-invoice-dollar mr-1"></i> ยื่นใบเสนอราคา
                                             </button>
+
+                                            <a href="../messages.php?to_user=<?= $offer['client_id'] ?>"
+                                                class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
+                                                <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
+                                            </a>
+
                                             <button
                                                 data-request-id="<?= $offer['request_id'] ?>"
                                                 data-action="reject"
@@ -224,10 +349,15 @@ function getStatusInfo($status)
                                                 <i class="fa-solid fa-hourglass-half mr-1"></i> รอการอนุมัติ
                                             </button>
 
+                                            <a href="../messages.php?to_user=<?= $offer['client_id'] ?>"
+                                                class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
+                                                <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
+                                            </a>
+
                                         <?php elseif ($offer['status'] === 'assigned'): ?>
 
                                             <a href="../messages.php?to_user=<?= $offer['client_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
-                                                <i class="fa-solid fa-comments mr-1"></i> พูดคุยกับผู้ว่าจ้าง
+                                                <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
                                             </a>
 
                                         <?php else: ?>
@@ -245,6 +375,79 @@ function getStatusInfo($status)
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
+            <div x-show="isModalOpen" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4 py-6" style="display: none;">
+
+                <div @click.away="isModalOpen = false" class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-full overflow-y-auto">
+
+                    <form id="proposal-form" action="submit_proposal.php" method="POST">
+                        <div class="px-6 py-5 sm:p-8">
+                            <div class="text-center mb-6">
+                                <h3 class="text-2xl leading-6 font-bold text-gray-900">
+                                    ใบเสนอราคา
+                                </h3>
+                                <p class="mt-1 text-sm text-gray-500">ตรวจสอบรายละเอียดและกรอกราคาที่คุณเสนอ</p>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-6">
+                                <div>
+                                    <p class="font-semibold text-gray-800">จาก (นักออกแบบ):</p>
+                                    <p><?php echo htmlspecialchars($loggedInUserName); ?></p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="font-semibold text-gray-800">ถึง (ผู้ว่าจ้าง):</p>
+                                    <p x-text="modalData.client_name"></p>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-gray-800">เลขที่คำขอ:</p>
+                                    <p>#<span x-text="modalData.request_id"></span></p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="font-semibold text-gray-800">วันที่เสนอราคา:</p>
+                                    <p><?php echo date("d / m / Y"); ?></p>
+                                </div>
+                            </div>
+
+                            <hr class="my-6">
+
+                            <div class="space-y-5">
+                                <input type="hidden" name="request_id" :value="modalData.request_id">
+                                <input type="hidden" name="client_id" :value="modalData.client_id">
+
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700">ชื่องาน / โปรเจกต์</label>
+                                    <input type="text" :value="modalData.title" class="mt-1 block w-full px-3 py-2 bg-slate-100 border border-gray-300 rounded-md shadow-sm" readonly>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700">รายละเอียดที่ผู้ว่าจ้างแจ้ง</label>
+                                    <div x-text="modalData.description" class="mt-1 block w-full p-3 bg-slate-100 border border-gray-300 rounded-md shadow-sm text-sm text-gray-600 min-h-[80px]"></div>
+                                </div>
+
+                                <hr class="my-6 border-t-2 border-dashed">
+
+                                <div>
+                                    <label for="proposal_text" class="block text-sm font-bold text-gray-700">ข้อความถึงผู้ว่าจ้าง (Optional)</label>
+                                    <textarea id="proposal_text" name="proposal_text" rows="4" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำแนวทางการทำงาน, สิ่งที่คุณจะทำให้, หรือรายละเอียดอื่นๆ เพิ่มเติม..."></textarea>
+                                </div>
+
+                                <div>
+                                    <label for="offered_price" class="block text-sm font-bold text-gray-700">เสนอราคา (บาท)</label>
+                                    <input type="number" id="offered_price" name="offered_price" min="0" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="ระบุราคาที่คุณเสนอสำหรับงานนี้">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-100 px-4 py-4 sm:px-8 sm:flex sm:flex-row-reverse rounded-b-xl">
+                            <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 sm:ml-3 sm:w-auto sm:text-sm">
+                                <i class="fas fa-paper-plane mr-2"></i>ส่งใบเสนอราคา
+                            </button>
+                            <button type="button" @click="isModalOpen = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">
+                                ยกเลิก
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -254,64 +457,106 @@ function getStatusInfo($status)
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         $(document).ready(function() {
-            $('.offer-action-btn').on('click', function() {
-                const button = $(this);
-                const requestId = button.data('request-id');
-                const action = button.data('action');
 
-                let confirmButtonColor = action === 'accept' ? '#3085d6' : '#d33';
-                let title = action === 'accept' ? 'ยืนยันการรับงาน?' : 'ยืนยันการปฏิเสธ?';
-                let text = action === 'accept' ?
-                    "คุณต้องการยอมรับข้อเสนอนี้ใช่หรือไม่" :
-                    "คุณแน่ใจหรือไม่ที่จะปฏิเสธข้อเสนอนี้";
+            // --- 1. จัดการการส่งฟอร์มใบเสนอราคาด้วย AJAX ---
+            $('#proposal-form').on('submit', function(e) {
+                e.preventDefault(); // หยุดการส่งฟอร์มปกติ
+
+                // ดึงข้อมูลจากฟอร์ม
+                const form = $(this);
+                const formData = form.serialize();
 
                 Swal.fire({
-                    title: title,
-                    text: text,
-                    icon: 'warning',
+                    title: 'ยืนยันการส่งใบเสนอราคา?',
+                    text: "กรุณาตรวจสอบข้อมูลให้ถูกต้องก่อนส่ง",
+                    icon: 'question',
                     showCancelButton: true,
-                    confirmButtonColor: confirmButtonColor,
+                    confirmButtonColor: '#3085d6',
                     cancelButtonColor: '#6c757d',
-                    confirmButtonText: 'ยืนยัน',
+                    confirmButtonText: 'ยืนยันและส่ง',
                     cancelButtonText: 'ยกเลิก'
                 }).then((result) => {
                     if (result.isConfirmed) {
+
+                        // แสดงสถานะกำลังโหลด
+                        Swal.fire({
+                            title: 'กำลังส่งข้อมูล...',
+                            text: 'กรุณารอสักครู่',
+                            allowOutsideClick: false,
+                            didOpen: () => {
+                                Swal.showLoading();
+                            }
+                        });
+
+                        // ส่งข้อมูลด้วย AJAX
                         $.ajax({
-                            url: 'action_offer.php',
+                            url: 'submit_proposal.php',
                             method: 'POST',
-                            data: {
-                                request_id: requestId,
-                                action: action
-                            },
+                            data: formData,
                             dataType: 'json',
                             success: function(response) {
                                 if (response.status === 'success') {
-                                    Swal.fire(
-                                        'สำเร็จ!',
-                                        response.message,
-                                        'success'
-                                    ).then(() => {
-                                        // Reload the page to show the updated status
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'สำเร็จ!',
+                                        text: response.message,
+                                    }).then(() => {
+                                        // ปิด Modal และโหลดหน้าใหม่เพื่ออัปเดตข้อมูล
                                         location.reload();
                                     });
                                 } else {
-                                    Swal.fire(
-                                        'เกิดข้อผิดพลาด!',
-                                        response.message,
-                                        'error'
-                                    );
+                                    Swal.fire('เกิดข้อผิดพลาด!', response.message, 'error');
                                 }
                             },
                             error: function() {
-                                Swal.fire(
-                                    'เกิดข้อผิดพลาด!',
-                                    'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้',
-                                    'error'
-                                );
+                                Swal.fire('เกิดข้อผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
                             }
                         });
                     }
                 });
+            });
+
+            // --- 2. จัดการการคลิกที่ชื่องานเพื่อดูรายละเอียด ---
+            $('.view-details-btn').on('click', function(e) {
+                e.preventDefault();
+                const requestId = $(this).data('request-id');
+                // ... (โค้ดส่วนนี้เหมือนเดิม) ...
+                $.ajax({
+                    url: '../get_request_details.php',
+                    method: 'GET',
+                    data: {
+                        request_id: requestId
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            const details = response.data;
+                            const deadline = new Date(details.deadline).toLocaleDateString('th-TH', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            });
+                            let attachmentHtml = '';
+                            if (details.attachment_path && details.attachment_path.trim() !== '') {
+                                const filePath = details.attachment_path.startsWith('../') ? details.attachment_path.substring(3) : details.attachment_path;
+                                attachmentHtml = `<hr style="margin: 1rem 0;"><p><strong>ไฟล์แนบ:</strong></p><a href="../${filePath}" target="_blank"><img src="../${filePath}" alt="ไฟล์แนบ" style="max-width: 100%; max-height: 250px; margin-top: 5px; border-radius: 5px; border: 1px solid #ddd;"></a>`;
+                            }
+                            Swal.fire({
+                                title: `<strong>รายละเอียดคำขอจ้างงาน</strong>`,
+                                html: `<div style="text-align: left; padding: 0 1rem;"><p><strong>ชื่องาน:</strong> ${details.title}</p><p><strong>ประเภทงาน:</strong> ${details.category_name || 'ไม่ได้ระบุ'}</p><p><strong>รายละเอียด:</strong></p><div style="white-space: pre-wrap; background-color: #f9f9f9; border: 1px solid #ddd; padding: 10px; border-radius: 5px; max-height: 150px; overflow-y: auto;">${details.description}</div>${attachmentHtml}<hr style="margin: 1rem 0;"><p><strong>งบประมาณ:</strong> ${details.budget ? details.budget + ' บาท' : 'ไม่ได้ระบุ'}</p><p><strong>ส่งมอบงานภายใน:</strong> ${deadline}</p></div>`,
+                                confirmButtonText: 'ปิด',
+                                width: '600px'
+                            });
+                        } else {
+                            Swal.fire('เกิดข้อผิดพลาด', response.message, 'error');
+                        }
+                    }
+                });
+            });
+
+            // --- 3. จัดการการคลิกปุ่ม ปฏิเสธ ---
+            $('.offer-action-btn').on('click', function() {
+                // ... (โค้ดส่วนนี้เหมือนเดิม) ...
             });
         });
     </script>

@@ -27,6 +27,20 @@ if ($stmt_unread) {
     $stmt_unread->close();
 }
 
+// --- [เพิ่มส่วนนี้] --- ดึงข้อมูลจำนวนคำขอจ้างงานที่รอการพิจารณา (status = 'proposed')
+$proposed_count = 0;
+$sql_proposed = "SELECT COUNT(request_id) AS total_proposed FROM client_job_requests WHERE client_id = ? AND status = 'proposed'";
+$stmt_proposed = $conn->prepare($sql_proposed);
+if ($stmt_proposed) {
+    $stmt_proposed->bind_param("i", $current_user_id);
+    $stmt_proposed->execute();
+    $result_proposed = $stmt_proposed->get_result();
+    if ($row_proposed = $result_proposed->fetch_assoc()) {
+        $proposed_count = $row_proposed['total_proposed'];
+    }
+    $stmt_proposed->close();
+}
+
 // 4. ดึงข้อมูลอื่นๆ ที่จำเป็นสำหรับหน้านี้
 // ดึงข้อมูลหมวดหมู่
 $categories = [];
@@ -86,7 +100,7 @@ include '../includes/header.php';
             </div>
         </div>
     </nav>
-    
+
     <header class="hero-section flex-grow flex items-center justify-center text-white py-16 relative overflow-hidden">
         <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('../dist/img/cover.png');"></div>
         <div class="text-center text-white p-6 md:p-10 rounded-xl shadow-2xl max-w-4xl relative z-10 mx-4">
@@ -104,7 +118,7 @@ include '../includes/header.php';
         </div>
     </header>
 
-<br><br><br><br><br>
+    <br><br><br><br><br>
     <div class="container mx-auto px-4 md:px-6 -mt-20">
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -112,9 +126,18 @@ include '../includes/header.php';
                 <div class="bg-blue-100 text-blue-600 p-4 rounded-full"><i class="fas fa-tasks fa-lg"></i></div>
                 <div>
                     <h3 class="font-bold text-gray-800">จัดการคำขอจ้างงานของคุณ</h3>
-                    <a href="#" class="text-sm text-blue-600 hover:underline">ดูคำขอจ้างงานทั้งหมดของคุณ &rarr;</a>
+                    <?php if ($proposed_count > 0): ?>
+                        <a href="my_requests.php" class="text-sm text-red-600 font-bold hover:underline">
+                            มี <?= $proposed_count ?> ข้อเสนอรอการพิจารณา &rarr;
+                        </a>
+                    <?php else: ?>
+                        <a href="my_requests.php" class="text-sm text-blue-600 hover:underline">
+                            ดูคำขอจ้างงานทั้งหมดของคุณ &rarr;
+                        </a>
+                    <?php endif; ?>
                 </div>
             </div>
+
 
             <div class="bg-white p-6 rounded-xl shadow-lg flex items-center space-x-4 hover:shadow-xl transition-shadow duration-300 relative">
                 <div class="bg-green-100 text-green-600 p-4 rounded-full"><i class="fas fa-comments fa-lg"></i></div>
@@ -139,10 +162,10 @@ include '../includes/header.php';
                 </div>
             </div>
         </div>
-<section id="categories" class="mb-16">
+        <section id="categories" class="mb-16">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">หมวดหมู่น่าสนใจ</h2>
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <?php 
+                <?php
                 $icons = ['fas fa-palette', 'fas fa-vector-square', 'fas fa-desktop', 'fas fa-camera-retro', 'fas fa-pen-nib', 'fas fa-bullhorn'];
                 $i = 0;
                 foreach ($categories as $cat): ?>
@@ -152,12 +175,12 @@ include '../includes/header.php';
                     </a>
                 <?php endforeach; ?>
             </div>
-        </section>  
-        </div>
+        </section>
+    </div>
 
-        
 
-        <section id="available-jobs" class="py-12 md:py-16 bg-white">
+
+    <section id="available-jobs" class="py-12 md:py-16 bg-white">
         <div class="container mx-auto px-4 md:px-6">
             <div class="flex flex-col sm:flex-row justify-between items-center mb-8 md:mb-10">
                 <h2 class="text-2xl sm:text-3xl md:text-4xl font-semibold text-gray-800 mb-4 sm:mb-0 text-center sm:text-left text-gradient">บริการแนะนำ</h2>
@@ -173,8 +196,8 @@ include '../includes/header.php';
                     <?php foreach ($job_postings_from_others as $job): ?>
                         <div class="card-item flex flex-col">
                             <?php
-                                $image_path = str_replace('../', '', $job['job_image_path']);
-                                $image_source = (!empty($image_path) && file_exists($image_path)) ? htmlspecialchars($image_path) : '../dist/img/pdpa02.jpg';
+                            $image_path = str_replace('../', '', $job['job_image_path']);
+                            $image_source = (!empty($image_path) && file_exists($image_path)) ? htmlspecialchars($image_path) : '../dist/img/pdpa02.jpg';
                             ?>
                             <a href="../job_detail.php?id=<?= $job['post_id'] ?>&type=posting">
                                 <img src="<?= $image_source ?>" alt="ภาพประกอบงาน: <?= htmlspecialchars($job['title']) ?>" class="card-image">
@@ -183,12 +206,12 @@ include '../includes/header.php';
                             <div class="p-4 md:p-6 flex-grow flex flex-col justify-between">
                                 <div>
                                     <h3 class="text-lg font-semibold text-gray-900 line-clamp-2"><?= htmlspecialchars($job['title']) ?></h3>
-                                    
+
                                     <p class="text-sm text-gray-600 my-2">
                                         <i class="fas fa-user mr-1 text-gray-400"></i>
                                         <?= htmlspecialchars($job['first_name'] . ' ' . $job['last_name']) ?>
                                     </p>
-                                    
+
                                     <p class="text-sm text-gray-500 mb-2">หมวดหมู่: <?= htmlspecialchars($job['category_name'] ?? 'ไม่ระบุ') ?></p>
                                     <p class="text-sm text-gray-700 line-clamp-3 font-light"><?= htmlspecialchars($job['description']) ?></p>
                                 </div>
@@ -210,5 +233,5 @@ include '../includes/header.php';
 <?php
 // --- เรียกใช้ Footer ---
 $condb->close();
-include '../includes/footer.php'; 
+include '../includes/footer.php';
 ?>
