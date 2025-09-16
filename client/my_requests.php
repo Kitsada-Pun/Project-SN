@@ -57,6 +57,7 @@ if ($stmt) {
 $counts = [
     'open' => 0,
     'proposed' => 0,
+    'awaiting_confirmation' => 0, // <-- เพิ่มบรรทัดนี้
     'assigned' => 0,
     'completed' => 0,
     'cancelled' => 0,
@@ -76,6 +77,10 @@ function getStatusInfoClient($status)
             return ['text' => 'เปิดรับข้อเสนอ', 'color' => 'bg-gray-200 text-gray-800', 'tab' => 'open'];
         case 'proposed':
             return ['text' => 'รอการพิจารณา', 'color' => 'bg-yellow-100 text-yellow-800', 'tab' => 'proposed'];
+            // --- เพิ่ม Case ใหม่ตรงนี้ ---
+        case 'awaiting_confirmation':
+            return ['text' => 'รอชำระเงินมัดจำ', 'color' => 'bg-orange-100 text-orange-800', 'tab' => 'awaiting'];
+            // --------------------------
         case 'assigned':
             return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'assigned'];
         case 'completed':
@@ -240,15 +245,18 @@ function getStatusInfoClient($status)
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-xs font-bold text-white"><?= $counts['proposed'] ?></span>
                     <?php endif; ?>
                 </button>
+                <button @click="tab = 'awaiting'" :class="tab === 'awaiting' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
+                    <i class="fa-solid fa-money-bill-wave mr-1.5"></i> รอชำระเงิน
+                    <?php if ($counts['awaiting_confirmation'] > 0): ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-orange-500 text-xs font-bold text-white"><?= $counts['awaiting_confirmation'] ?></span>
+                    <?php endif; ?>
+                </button>
                 <button @click="tab = 'assigned'" :class="tab === 'assigned' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-person-digging mr-1.5"></i> กำลังดำเนินการ
                 </button>
                 <button @click="tab = 'completed'" :class="tab === 'completed' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-circle-check mr-1.5"></i> เสร็จสมบูรณ์
                 </button>
-                <!-- <button @click="tab = 'open'" :class="tab === 'open' ? 'bg-white text-gray-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
-                    <i class="fa-solid fa-folder-open mr-1.5"></i> เปิดรับข้อเสนอ
-                </button> -->
             </div>
 
             <div class="space-y-5">
@@ -295,6 +303,11 @@ function getStatusInfoClient($status)
                                         <?php if ($request['status'] === 'proposed'): ?>
                                             <a href="review_proposal.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-semibold hover:bg-yellow-600">
                                                 <i class="fa-solid fa-file-alt mr-1"></i> พิจารณาข้อเสนอ
+                                            </a>
+
+                                        <?php elseif ($request['status'] === 'awaiting_confirmation'): ?>
+                                            <a href="payment.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600">
+                                                <i class="fa-solid fa-credit-card mr-1"></i> ชำระเงินมัดจำ
                                             </a>
                                         <?php elseif ($request['status'] === 'assigned'): ?>
                                             <a href="../messages.php?to_user=<?= $request['designer_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600">

@@ -59,9 +59,12 @@ if ($stmt) {
     die("เกิดข้อผิดพลาดในการดึงข้อมูล");
 }
 
-// --- นับจำนวนข้อเสนอในแต่ละสถานะ ---
+// --- นับจำนวนข้อเสนอในแต่ละสถานะ (ปรับปรุงให้รองรับทุก Tab) ---
 $pending_offers_count = 0;
 $submitted_offers_count = 0;
+$awaiting_confirmation_count = 0;
+$assigned_count = 0;
+$rejected_offers_count = 0;
 $cancelled_offers_count = 0;
 
 foreach ($offers as $offer) {
@@ -72,6 +75,15 @@ foreach ($offers as $offer) {
         case 'proposed':
             $submitted_offers_count++;
             break;
+        case 'awaiting_confirmation':
+            $awaiting_confirmation_count++;
+            break;
+        case 'assigned':
+            $assigned_count++;
+            break;
+        case 'rejected':
+            $rejected_offers_count++;
+            break;
         case 'cancelled':
             $cancelled_offers_count++;
             break;
@@ -79,7 +91,8 @@ foreach ($offers as $offer) {
 }
 $conn->close();
 
-// --- ฟังก์ชันแสดงข้อมูลสถานะ ---
+// --- ฟังก์ชันแสดงข้อมูลสถานะ (ปรับปรุงใหม่) ---
+// --- ฟังก์ชันแสดงข้อมูลสถานะ (ปรับปรุงใหม่) ---
 function getStatusInfo($status)
 {
     switch ($status) {
@@ -87,12 +100,14 @@ function getStatusInfo($status)
             return ['text' => 'รอการตอบรับ', 'color' => 'bg-yellow-100 text-yellow-800', 'tab' => 'pending'];
         case 'proposed':
             return ['text' => 'รอผู้ว่าจ้างพิจารณา', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'submitted'];
+        case 'awaiting_confirmation':
+            return ['text' => 'รอการยืนยันชำระเงิน', 'color' => 'bg-orange-100 text-orange-800', 'tab' => 'awaiting'];
         case 'assigned':
-            return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-green-100 text-green-800', 'tab' => 'active'];
+            return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-green-100 text-green-800', 'tab' => 'assigned']; // แก้ไข tab ให้ตรงกับของเดิม
         case 'completed':
             return ['text' => 'เสร็จสมบูรณ์', 'color' => 'bg-gray-100 text-gray-800', 'tab' => 'completed'];
         case 'rejected':
-            return ['text' => 'ปฏิเสธแล้ว', 'color' => 'bg-red-100 text-red-800', 'tab' => 'rejected'];
+            return ['text' => 'ปฏิเสธแล้ว', 'color' => 'bg-red-100 text-red-800', 'tab' => 'rejected']; // แก้ไข tab ให้ตรงกับของเดิม
         case 'cancelled':
             return ['text' => 'ถูกยกเลิก', 'color' => 'bg-gray-100 text-gray-800', 'tab' => 'cancelled'];
         default:
@@ -272,6 +287,24 @@ function getStatusInfo($status)
                         </span>
                     <?php endif; ?>
                 </button>
+                <button @click="tab = 'awaiting'" :class="tab === 'awaiting' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
+                    <i class="fa-solid fa-hourglass-half mr-1.5"></i>
+                    <span>รอการยืนยัน</span>
+                    <?php if ($awaiting_confirmation_count > 0) : ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-orange-500 text-xs font-bold text-white">
+                            <?= $awaiting_confirmation_count ?>
+                        </span>
+                    <?php endif; ?>
+                </button>
+                <button @click="tab = 'assigned'" :class="tab === 'assigned' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
+                    <i class="fa-solid fa-person-digging mr-1.5"></i>
+                    <span>กำลังดำเนินการ</span>
+                    <?php if ($assigned_count > 0) : ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-green-500 text-xs font-bold text-white">
+                            <?= $assigned_count ?>
+                        </span>
+                    <?php endif; ?>
+                </button>
                 <button @click="tab = 'rejected'" :class="tab === 'rejected' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
                     <i class="fa-solid fa-ban mr-1.5"></i> งานที่ปฏิเสธ
                 </button>
@@ -341,12 +374,52 @@ function getStatusInfo($status)
                                             <a href="../messages.php?to_user=<?= $offer['client_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
                                                 <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
                                             </a>
+                                        <?php elseif ($offer['status'] === 'awaiting_confirmation') : ?>
+                                            <button data-request-id="<?= $offer['request_id'] ?>" class="confirm-payment-btn w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
+                                                <i class="fa-solid fa-check-double mr-1"></i> ยืนยันการชำระเงินและเริ่มงาน
+                                            </button>
+                                            <a href="../messages.php?to_user=<?= $offer['client_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors">
+                                                <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
+                                            </a>
+                                        <?php elseif ($offer['status'] === 'assigned') : ?>
+                                            <a href="../messages.php?to_user=<?= $offer['client_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors">
+                                                <i class="fa-solid fa-comments mr-1"></i> พูดคุยเรื่องงาน
+                                            </a>
                                         <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     <?php endforeach; ?>
+
+                    <div x-show="tab === 'pending' && <?= $pending_offers_count ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                        <i class="fa-solid fa-inbox fa-3x text-slate-300"></i>
+                        <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มีข้อเสนองานใหม่</h3>
+                        <p class="mt-1 text-slate-500">เมื่อผู้ว่าจ้างส่งคำของานมาให้คุณโดยตรง จะแสดงที่นี่</p>
+                    </div>
+                    <div x-show="tab === 'submitted' && <?= $submitted_offers_count ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                        <i class="fa-solid fa-paper-plane fa-3x text-slate-300"></i>
+                        <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มีใบเสนอราคาที่ยื่นไป</h3>
+                        <p class="mt-1 text-slate-500">เมื่อคุณยื่นใบเสนอราคาแล้ว จะแสดงที่นี่เพื่อรอการพิจารณา</p>
+                    </div>
+                    <div x-show="tab === 'awaiting' && <?= $awaiting_confirmation_count ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                        <i class="fa-solid fa-hourglass-half fa-3x text-slate-300"></i>
+                        <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่รอการยืนยัน</h3>
+                        <p class="mt-1 text-slate-500">เมื่องานได้รับการยอมรับจากผู้ว่าจ้าง จะแสดงที่นี่เพื่อรอการยืนยันชำระเงิน</p>
+                    </div>
+                    <div x-show="tab === 'assigned' && <?= $assigned_count ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                        <i class="fa-solid fa-person-digging fa-3x text-slate-300"></i>
+                        <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่กำลังดำเนินการ</h3>
+                        <p class="mt-1 text-slate-500">เมื่องานได้รับการยืนยันการชำระเงินแล้ว จะมาแสดงที่นี่</p>
+                    </div>
+                    <div x-show="tab === 'rejected' && <?= $rejected_offers_count ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                        <i class="fa-solid fa-ban fa-3x text-slate-300"></i>
+                        <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่ถูกปฏิเสธ</h3>
+                    </div>
+                    <div x-show="tab === 'cancelled' && <?= $cancelled_offers_count ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                        <i class="fa-solid fa-circle-xmark fa-3x text-slate-300"></i>
+                        <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่ถูกยกเลิก</h3>
+                    </div>
                 <?php endif; ?>
             </div>
 
@@ -691,6 +764,78 @@ function getStatusInfo($status)
                     },
                     error: function() {
                         Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลใบเสนอราคาได้', 'error');
+                    }
+                });
+            });
+            // เพิ่ม script จัดการปุ่ม 'ยืนยันการชำระเงินและเริ่มงาน'
+            $(document).on('click', '.confirm-payment-btn', function() {
+                const requestId = $(this).data('request-id');
+                Swal.fire({
+                    title: 'ยืนยันการเริ่มงาน?',
+                    text: "คุณได้ตรวจสอบสลิปและยืนยันการชำระเงินมัดจำจากผู้ว่าจ้างแล้วใช่หรือไม่?",
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#28a745',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'ใช่, เริ่มงานเลย',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        $.ajax({
+                            url: 'action_offer.php', // เราจะใช้ไฟล์ action เดิม
+                            method: 'POST',
+                            data: {
+                                request_id: requestId,
+                                action: 'confirm_payment' // ส่ง action ใหม่ไปให้ server
+                            },
+                            dataType: 'json',
+                            success: function(response) {
+                                if (response.status === 'success') {
+                                    Swal.fire('สำเร็จ!', response.message, 'success').then(() => location.reload());
+                                } else {
+                                    Swal.fire('ผิดพลาด!', response.message, 'error');
+                                }
+                            },
+                            error: function() {
+                                Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
+                            }
+                        });
+                    }
+                });
+            });
+            // เพิ่ม script จัดการปุ่ม 'ยืนยันการชำระเงินและเริ่มงาน'
+            $(document).on('click', '.confirm-payment-btn', function() {
+                const requestId = $(this).data('request-id');
+                Swal.fire({
+                    title: 'ยืนยันการเริ่มงาน?',
+                    text: "คุณได้ตรวจสอบสลิปและยืนยันการชำระเงินมัดจำจากผู้ว่าจ้างแล้วใช่หรือไม่?",
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#28a745',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'ใช่, เริ่มงานเลย',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        $.ajax({
+                            url: 'action_offer.php',
+                            method: 'POST',
+                            data: {
+                                request_id: requestId,
+                                action: 'confirm_payment' // ส่ง action ใหม่
+                            },
+                            dataType: 'json',
+                            success: function(response) {
+                                if (response.status === 'success') {
+                                    Swal.fire('สำเร็จ!', response.message, 'success').then(() => location.reload());
+                                } else {
+                                    Swal.fire('ผิดพลาด!', response.message, 'error');
+                                }
+                            },
+                            error: function() {
+                                Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
+                            }
+                        });
                     }
                 });
             });
