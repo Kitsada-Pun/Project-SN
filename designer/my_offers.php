@@ -10,32 +10,27 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'designer') {
 require_once '../connect.php';
 
 $designer_id = $_SESSION['user_id'];
-$loggedInUserName = $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Designer';
+$loggedInUserName = '';
 
 // --- ดึงชื่อผู้ใช้ที่ล็อกอิน ---
 if (isset($_SESSION['user_id'])) {
-    $loggedInUserName = $_SESSION['username'] ?? $_SESSION['full_name'] ?? '';
-    if (empty($loggedInUserName)) {
-        $user_id = $_SESSION['user_id'];
-        $sql_user = "SELECT first_name, last_name FROM users WHERE user_id = ?";
-        $stmt_user = $condb->prepare($sql_user);
-        if ($stmt_user) {
-            $stmt_user->bind_param("i", $user_id);
-            $stmt_user->execute();
-            $result_user = $stmt_user->get_result();
-            if ($result_user->num_rows === 1) {
-                $user_info = $result_user->fetch_assoc();
-                $loggedInUserName = $user_info['first_name'] . ' ' . $user_info['last_name'];
-            }
-            $stmt_user->close();
+    $user_id = $_SESSION['user_id'];
+    $sql_user = "SELECT first_name, last_name FROM users WHERE user_id = ?";
+    $stmt_user = $conn->prepare($sql_user);
+    if ($stmt_user) {
+        $stmt_user->bind_param("i", $user_id);
+        $stmt_user->execute();
+        $result_user = $stmt_user->get_result();
+        if ($user_info = $result_user->fetch_assoc()) {
+            $loggedInUserName = trim($user_info['first_name'] . ' ' . $user_info['last_name']);
         }
+        $stmt_user->close();
     }
 }
 
 $offers = [];
 
-// --- [ปรับแก้ SQL Query] ---
-// ดึงข้อมูลจาก client_job_requests ที่ส่งถึงนักออกแบบคนนี้โดยตรง
+// --- SQL Query ---
 $sql = "
     SELECT 
         cjr.request_id,
@@ -45,18 +40,16 @@ $sql = "
         cjr.posted_date AS offer_date,
         cjr.status,
         u.user_id AS client_id,
-        CONCAT(u.first_name, ' ', u.last_name) AS client_name,
-        p.profile_picture_url AS client_avatar
+        CONCAT(u.first_name, ' ', u.last_name) AS client_name
     FROM client_job_requests cjr
     JOIN users u ON cjr.client_id = u.user_id
-    LEFT JOIN profiles p ON u.user_id = p.user_id
-    WHERE cjr.designer_id = ?
+    WHERE cjr.designer_id = ? OR cjr.request_id IN (SELECT request_id FROM job_applications WHERE designer_id = ?)
     ORDER BY cjr.posted_date DESC
 ";
 
 $stmt = $conn->prepare($sql);
 if ($stmt) {
-    $stmt->bind_param("i", $designer_id);
+    $stmt->bind_param("ii", $designer_id, $designer_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $offers = $result->fetch_all(MYSQLI_ASSOC);
@@ -65,19 +58,28 @@ if ($stmt) {
     error_log("SQL Error (my_offers): " . $conn->error);
     die("เกิดข้อผิดพลาดในการดึงข้อมูล");
 }
-// นับจำนวนข้อเสนอที่รอการตอบรับจากข้อมูลที่มีอยู่แล้ว
+
+// --- นับจำนวนข้อเสนอในแต่ละสถานะ ---
 $pending_offers_count = 0;
 $submitted_offers_count = 0;
+$cancelled_offers_count = 0;
+
 foreach ($offers as $offer) {
-    if ($offer['status'] === 'open') {
-        $pending_offers_count++;
-    } elseif ($offer['status'] === 'proposed') {
-        $submitted_offers_count++;
+    switch ($offer['status']) {
+        case 'open':
+            $pending_offers_count++;
+            break;
+        case 'proposed':
+            $submitted_offers_count++;
+            break;
+        case 'cancelled':
+            $cancelled_offers_count++;
+            break;
     }
 }
 $conn->close();
 
-// --- [ปรับแก้ Function] ---
+// --- ฟังก์ชันแสดงข้อมูลสถานะ ---
 function getStatusInfo($status)
 {
     switch ($status) {
@@ -86,11 +88,13 @@ function getStatusInfo($status)
         case 'proposed':
             return ['text' => 'รอผู้ว่าจ้างพิจารณา', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'submitted'];
         case 'assigned':
-            return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'active'];
+            return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-green-100 text-green-800', 'tab' => 'active'];
         case 'completed':
-            return ['text' => 'เสร็จสมบูรณ์', 'color' => 'bg-green-100 text-green-800', 'tab' => 'completed'];
+            return ['text' => 'เสร็จสมบูรณ์', 'color' => 'bg-gray-100 text-gray-800', 'tab' => 'completed'];
+        case 'rejected':
+            return ['text' => 'ปฏิเสธแล้ว', 'color' => 'bg-red-100 text-red-800', 'tab' => 'rejected'];
         case 'cancelled':
-            return ['text' => 'ยกเลิก', 'color' => 'bg-gray-100 text-gray-800', 'tab' => 'cancelled'];
+            return ['text' => 'ถูกยกเลิก', 'color' => 'bg-gray-100 text-gray-800', 'tab' => 'cancelled'];
         default:
             return ['text' => 'ไม่ระบุ', 'color' => 'bg-gray-100 text-gray-800', 'tab' => 'all'];
     }
@@ -253,50 +257,48 @@ function getStatusInfo($status)
                 <button @click="tab = 'pending'" :class="tab === 'pending' ? 'bg-white text-yellow-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
                     <i class="fa-solid fa-inbox mr-1.5"></i>
                     <span>ข้อเสนองาน</span>
-                    <?php if ($pending_offers_count > 0): ?>
+                    <?php if ($pending_offers_count > 0) : ?>
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-xs font-bold text-white">
                             <?= $pending_offers_count ?>
                         </span>
                     <?php endif; ?>
                 </button>
-
                 <button @click="tab = 'submitted'" :class="tab === 'submitted' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
                     <i class="fa-solid fa-paper-plane mr-1.5"></i>
                     <span>ยื่นใบเสนอราคา</span>
-                    <?php if ($submitted_offers_count > 0): ?>
+                    <?php if ($submitted_offers_count > 0) : ?>
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500 text-xs font-bold text-white">
                             <?= $submitted_offers_count ?>
                         </span>
                     <?php endif; ?>
                 </button>
-                <button @click="tab = 'active'" :class="tab === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
-                    <i class="fa-solid fa-person-digging mr-1.5"></i> กำลังดำเนินการ
+                <button @click="tab = 'rejected'" :class="tab === 'rejected' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
+                    <i class="fa-solid fa-ban mr-1.5"></i> งานที่ปฏิเสธ
                 </button>
-                <button @click="tab = 'completed'" :class="tab === 'completed' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
-                    <i class="fa-solid fa-circle-check mr-1.5"></i> เสร็จสมบูรณ์
-                </button>
-                <button @click="tab = 'cancelled'" :class="tab === 'cancelled' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
-                    <i class="fa-solid fa-circle-xmark mr-1.5"></i> ยกเลิก
+                <button @click="tab = 'cancelled'" :class="tab === 'cancelled' ? 'bg-white text-gray-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200">
+                    <i class="fa-solid fa-circle-xmark mr-1.5"></i> งานที่ถูกยกเลิก
+                    <?php if ($cancelled_offers_count > 0) : ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-gray-500 text-xs font-bold text-white">
+                            <?= $cancelled_offers_count ?>
+                        </span>
+                    <?php endif; ?>
                 </button>
             </div>
 
             <div class="space-y-5">
-                <?php if (empty($offers)): ?>
+                <?php if (empty($offers)) : ?>
                     <div class="text-center bg-white rounded-lg shadow-sm p-12">
-                        <div class="mx-auto w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center">
-                            <i class="fa-solid fa-paper-plane fa-2x text-slate-400"></i>
-                        </div>
+                        <i class="fa-solid fa-paper-plane fa-3x text-slate-300"></i>
                         <h3 class="mt-4 text-xl font-semibold text-slate-700">ยังไม่มีข้อเสนองานเข้ามา</h3>
                         <p class="mt-1 text-slate-500">เมื่อมีผู้ว่าจ้างสนใจคุณ ข้อเสนอจะแสดงที่นี่</p>
                     </div>
-                <?php else: ?>
-                    <?php foreach ($offers as $offer): ?>
+                <?php else : ?>
+                    <?php foreach ($offers as $offer) : ?>
                         <?php
                         $statusInfo = getStatusInfo($offer['status']);
                         $data_status = $statusInfo['tab'];
                         ?>
-                        <div x-show="tab === 'all' || tab === '<?= $data_status ?>'"
-                            class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                        <div x-show="tab === 'all' || tab === '<?= $data_status ?>'" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
                             <div class="flex flex-col sm:flex-row gap-6">
                                 <div class="flex-1">
                                     <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -322,57 +324,24 @@ function getStatusInfo($status)
                                         ฿<?= !empty($offer['price']) ? number_format((float)$offer['price'], 2) : 'N/A' ?>
                                     </div>
                                     <div class="flex flex-col sm:items-end gap-2">
-
-                                        <?php if ($offer['status'] === 'open'): ?>
-
-                                            <button
-                                                @click="isModalOpen = true; modalData = <?= htmlspecialchars(json_encode($offer), ENT_QUOTES, 'UTF-8') ?>"
-                                                class="w-full sm:w-auto text-center px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors">
+                                        <?php if ($offer['status'] === 'open') : ?>
+                                            <button @click='isModalOpen = true; modalData = <?= htmlspecialchars(json_encode($offer), ENT_QUOTES, 'UTF-8') ?>' class="w-full sm:w-auto text-center px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors">
                                                 <i class="fa-solid fa-file-invoice-dollar mr-1"></i> ยื่นใบเสนอราคา
                                             </button>
-
-                                            <a href="../messages.php?to_user=<?= $offer['client_id'] ?>"
-                                                class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
-                                                <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
-                                            </a>
-
-                                            <button
-                                                data-request-id="<?= $offer['request_id'] ?>"
-                                                data-action="reject"
-                                                class="offer-action-btn w-full sm:w-auto text-center px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors">
-                                                <i class="fa-solid fa-times mr-1"></i> ปฏิเสธ
-                                            </button>
-
-                                        <?php elseif ($offer['status'] === 'proposed'): ?>
-                                            <a href="#" class="view-details-btn w-full sm:w-auto text-center px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-semibold hover:bg-slate-700" data-request-id="<?= $offer['request_id'] ?>">
-                                                <i class="fa-solid fa-search mr-1"></i> ดูรายละเอียดงาน
-                                            </a>
-
-                                            <button
-                                                data-request-id="<?= $offer['request_id'] ?>"
-                                                class="view-proposal-btn w-full sm:w-auto text-center px-4 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold hover:bg-purple-600 transition-colors">
-                                                <i class="fa-solid fa-eye mr-1"></i> ดูใบเสนอราคาของฉัน
-                                            </button>
-
-                                            <a href="../messages.php?to_user=<?= $offer['client_id'] ?>"
-                                                class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
-                                                <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
-                                            </a>
-
-                                        <?php elseif ($offer['status'] === 'assigned'): ?>
-
                                             <a href="../messages.php?to_user=<?= $offer['client_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
                                                 <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
                                             </a>
-
-                                        <?php else: ?>
-
-                                            <a href="../job_detail.php?request_id=<?= $offer['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-semibold hover:bg-slate-700 transition-colors">
-                                                <i class="fa-solid fa-search mr-1"></i> ดูรายละเอียด
+                                            <button data-request-id="<?= $offer['request_id'] ?>" data-action="reject" class="offer-action-btn w-full sm:w-auto text-center px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors">
+                                                <i class="fa-solid fa-times mr-1"></i> ปฏิเสธ
+                                            </button>
+                                        <?php elseif ($offer['status'] === 'proposed') : ?>
+                                            <button data-request-id="<?= $offer['request_id'] ?>" class="view-proposal-btn w-full sm:w-auto text-center px-4 py-2 bg-purple-500 text-white rounded-lg text-sm font-semibold hover:bg-purple-600 transition-colors">
+                                                <i class="fa-solid fa-eye mr-1"></i> ดูใบเสนอราคาของฉัน
+                                            </button>
+                                            <a href="../messages.php?to_user=<?= $offer['client_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors">
+                                                <i class="fa-solid fa-comments mr-1"></i> ติดต่อผู้ว่าจ้าง
                                             </a>
-
                                         <?php endif; ?>
-
                                     </div>
                                 </div>
                             </div>
@@ -380,19 +349,15 @@ function getStatusInfo($status)
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
+
             <div x-show="isModalOpen" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4 py-6" style="display: none;">
-
                 <div @click.away="isModalOpen = false" class="bg-gray-50 rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-full overflow-y-auto">
-
-                    <form id="proposal-form" action="submit_proposal.php" method="POST">
+                    <form id="proposal-form" method="POST">
                         <div class="px-6 py-5 sm:p-8">
                             <div class="text-center mb-6">
-                                <h3 class="text-2xl leading-6 font-bold text-gray-900">
-                                    ใบเสนอราคา
-                                </h3>
-                                <p class="mt-1 text-sm text-gray-500">ตรวจสอบรายละเอียดและกรอกราคาที่คุณเสนอ</p>
+                                <h3 class="text-2xl leading-6 font-bold text-gray-900"> ใบเสนอราคา </h3>
+                                <p class="mt-1 text-sm text-gray-500">สำหรับงาน: <span class="font-semibold" x-text="modalData.title"></span></p>
                             </div>
-
                             <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-6">
                                 <div>
                                     <p class="font-semibold text-gray-800">จาก (นักออกแบบ):</p>
@@ -411,42 +376,29 @@ function getStatusInfo($status)
                                     <p><?php echo date("d / m / Y"); ?></p>
                                 </div>
                             </div>
-
                             <hr class="my-6">
-
                             <div class="space-y-5">
                                 <input type="hidden" name="request_id" :value="modalData.request_id">
                                 <input type="hidden" name="client_id" :value="modalData.client_id">
-
-                                <div>
-                                    <label class="block text-sm font-bold text-gray-700">ชื่องาน / โปรเจกต์</label>
-                                    <input type="text" :value="modalData.title" class="mt-1 block w-full px-3 py-2 bg-slate-100 border border-gray-300 rounded-md shadow-sm" readonly>
-                                </div>
-
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700">รายละเอียดที่ผู้ว่าจ้างแจ้ง</label>
                                     <div x-text="modalData.description" class="mt-1 block w-full p-3 bg-slate-100 border border-gray-300 rounded-md shadow-sm text-sm text-gray-600 min-h-[80px]"></div>
                                 </div>
-
                                 <hr class="my-6 border-t-2 border-dashed">
-
                                 <div>
                                     <label for="proposal_text" class="block text-sm font-bold text-gray-700">ข้อความถึงผู้ว่าจ้าง (Optional)</label>
                                     <textarea id="proposal_text" name="proposal_text" rows="4" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="แนะนำแนวทางการทำงาน, สิ่งที่คุณจะทำให้, หรือรายละเอียดอื่นๆ เพิ่มเติม..."></textarea>
                                 </div>
-
                                 <div>
                                     <label for="offered_price" class="block text-sm font-bold text-gray-700">เสนอราคา (บาท)</label>
                                     <input type="number" id="offered_price" name="offered_price" min="0" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="ระบุราคาที่คุณเสนอสำหรับงานนี้">
                                 </div>
-
                                 <div id="deposit-calculation" class="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800" style="display: none;">
                                     <p>ยอดมัดจำ 20%: <strong id="deposit-amount" class="font-bold">0.00</strong> บาท</p>
                                     <p class="text-xs text-blue-600 mt-1">ยอดนี้จะถูกเรียกเก็บจากผู้ว่าจ้างเมื่อมีการตกลงจ้างงาน</p>
                                 </div>
                             </div>
                         </div>
-
                         <div class="bg-gray-100 px-4 py-4 sm:px-8 sm:flex sm:flex-row-reverse rounded-b-xl">
                             <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 sm:ml-3 sm:w-auto sm:text-sm">
                                 <i class="fas fa-paper-plane mr-2"></i>ส่งใบเสนอราคา
@@ -467,15 +419,66 @@ function getStatusInfo($status)
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         $(document).ready(function() {
+            // --- 1. จัดการการคำนวณเงินมัดจำ ---
+            $(document).on('input', '#offered_price', function() {
+                const price = parseFloat($(this).val());
+                const depositContainer = $('#deposit-calculation');
+                const depositAmountSpan = $('#deposit-amount');
+                if (price && price > 0) {
+                    const deposit = price * 0.20;
+                    const formattedDeposit = deposit.toLocaleString('th-TH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                    depositAmountSpan.text(formattedDeposit);
+                    depositContainer.slideDown();
+                } else {
+                    depositContainer.slideUp();
+                }
+            });
 
-            // --- 1. จัดการการส่งฟอร์มใบเสนอราคาด้วย AJAX ---
+            // --- 2. จัดการการคลิกปุ่ม ปฏิเสธ ---
+            $(document).on('click', '.offer-action-btn', function() {
+                const requestId = $(this).data('request-id');
+                const action = $(this).data('action');
+                Swal.fire({
+                    title: 'ยืนยันการปฏิเสธ?',
+                    text: "คุณแน่ใจหรือไม่ว่าต้องการปฏิเสธข้อเสนองานนี้?",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'ใช่, ปฏิเสธเลย',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        $.ajax({
+                            url: 'action_offer.php',
+                            method: 'POST',
+                            data: {
+                                request_id: requestId,
+                                action: action
+                            },
+                            dataType: 'json',
+                            success: function(response) {
+                                if (response.status === 'success') {
+                                    Swal.fire('สำเร็จ!', response.message, 'success').then(() => location.reload());
+                                } else {
+                                    Swal.fire('ผิดพลาด!', response.message, 'error');
+                                }
+                            },
+                            error: function() {
+                                Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
+                            }
+                        });
+                    }
+                });
+            });
+
+            // --- 3. จัดการการส่งฟอร์มใบเสนอราคา ---
             $('#proposal-form').on('submit', function(e) {
-                e.preventDefault(); // หยุดการส่งฟอร์มปกติ
-
-                // ดึงข้อมูลจากฟอร์ม
-                const form = $(this);
-                const formData = form.serialize();
-
+                e.preventDefault();
+                const formData = $(this).serialize();
                 Swal.fire({
                     title: 'ยืนยันการส่งใบเสนอราคา?',
                     text: "กรุณาตรวจสอบข้อมูลให้ถูกต้องก่อนส่ง",
@@ -487,18 +490,13 @@ function getStatusInfo($status)
                     cancelButtonText: 'ยกเลิก'
                 }).then((result) => {
                     if (result.isConfirmed) {
-
-                        // แสดงสถานะกำลังโหลด
                         Swal.fire({
                             title: 'กำลังส่งข้อมูล...',
-                            text: 'กรุณารอสักครู่',
                             allowOutsideClick: false,
                             didOpen: () => {
                                 Swal.showLoading();
                             }
                         });
-
-                        // ส่งข้อมูลด้วย AJAX
                         $.ajax({
                             url: 'submit_proposal.php',
                             method: 'POST',
@@ -506,20 +504,13 @@ function getStatusInfo($status)
                             dataType: 'json',
                             success: function(response) {
                                 if (response.status === 'success') {
-                                    Swal.fire({
-                                        icon: 'success',
-                                        title: 'สำเร็จ!',
-                                        text: response.message,
-                                    }).then(() => {
-                                        // ปิด Modal และโหลดหน้าใหม่เพื่ออัปเดตข้อมูล
-                                        location.reload();
-                                    });
+                                    Swal.fire('สำเร็จ!', response.message, 'success').then(() => location.reload());
                                 } else {
-                                    Swal.fire('เกิดข้อผิดพลาด!', response.message, 'error');
+                                    Swal.fire('ผิดพลาด!', response.message, 'error');
                                 }
                             },
                             error: function() {
-                                Swal.fire('เกิดข้อผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
+                                Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
                             }
                         });
                     }
