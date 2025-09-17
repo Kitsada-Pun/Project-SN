@@ -29,41 +29,39 @@ if (!$application_id || !$request_id || !$designer_id || !in_array($action, ['ac
 $conn->begin_transaction();
 
 try {
-    // ตรวจสอบว่า client เป็นเจ้าของ request_id นี้จริง
+    // ตรวจสอบว่าเป็นเจ้าของงานและงานยังรอการพิจารณาอยู่
     $sql_verify = "SELECT status FROM client_job_requests WHERE request_id = ? AND client_id = ?";
     $stmt_verify = $conn->prepare($sql_verify);
     $stmt_verify->bind_param("ii", $request_id, $client_id);
     $stmt_verify->execute();
     $result = $stmt_verify->get_result();
-
     if ($result->num_rows === 0) {
         throw new Exception('ไม่พบคำของาน หรือคุณไม่มีสิทธิ์จัดการ');
     }
     $job_info = $result->fetch_assoc();
-
-    // ตรวจสอบว่าสถานะของงานยังเป็น 'proposed' (รอพิจารณา) อยู่หรือไม่
     if ($job_info['status'] !== 'proposed') {
         throw new Exception('การตัดสินใจนี้ได้ถูกดำเนินการไปแล้ว');
     }
 
     if ($action === 'accept') {
-        // --- ส่วนสำคัญที่สุด: การตอบตกลง ---
-        // 1. อัปเดตสถานะใบสมัคร (job_applications) ที่ถูกเลือกเป็น 'accepted'
+        // --- ส่วนของการ "ตอบตกลง" ---
+
+        // 1. อัปเดตสถานะใบสมัครที่ถูกเลือกเป็น 'accepted'
         $sql_accept = "UPDATE job_applications SET status = 'accepted' WHERE application_id = ?";
         $stmt_accept = $conn->prepare($sql_accept);
         $stmt_accept->bind_param("i", $application_id);
         $stmt_accept->execute();
         $stmt_accept->close();
 
-        // 2. อัปเดตสถานะของงาน (client_job_requests) เป็น 'awaiting_confirmation'
-        $new_status = 'awaiting_confirmation';
+        // 2. [แก้ไข] อัปเดตสถานะของงาน (client_job_requests) เป็น 'awaiting_deposit_verification'
+        $new_status = 'awaiting_deposit_verification';
         $sql_update_req = "UPDATE client_job_requests SET status = ?, designer_id = ? WHERE request_id = ?";
         $stmt_update_req = $conn->prepare($sql_update_req);
         $stmt_update_req->bind_param("sii", $new_status, $designer_id, $request_id);
         $stmt_update_req->execute();
         $stmt_update_req->close();
-
-        // 2.5 สร้างสัญญา (contract) ที่มีสถานะ 'pending'
+        
+        // 3. สร้างสัญญา (contract) ในสถานะ 'pending'
         $sql_get_price = "SELECT offered_price FROM job_applications WHERE application_id = ?";
         $stmt_price = $conn->prepare($sql_get_price);
         $stmt_price->bind_param("i", $application_id);
@@ -78,31 +76,33 @@ try {
         $stmt_insert_contract->bind_param("iiids", $request_id, $designer_id, $client_id, $agreed_price, $start_date);
         $stmt_insert_contract->execute();
         $stmt_insert_contract->close();
-
-        // 3. (ทางเลือก) ปฏิเสธใบสมัครอื่นๆ ทั้งหมดสำหรับงานนี้โดยอัตโนมัติ
+        
+        // 4. ปฏิเสธใบสมัครอื่นๆ ทั้งหมดสำหรับงานนี้โดยอัตโนมัติ
         $sql_reject_others = "UPDATE job_applications SET status = 'rejected' WHERE request_id = ? AND application_id != ?";
         $stmt_reject_others = $conn->prepare($sql_reject_others);
         $stmt_reject_others->bind_param("ii", $request_id, $application_id);
         $stmt_reject_others->execute();
         $stmt_reject_others->close();
+        
+        $message = "ตอบตกลงข้อเสนอเรียบร้อยแล้ว! ระบบกำลังนำคุณไปสู่หน้าชำระเงินมัดจำ";
+        // [แก้ไข] เพิ่ม redirectUrl เพื่อให้ JavaScript รู้ว่าต้องไปหน้าไหนต่อ
+        $response = ['status' => 'success', 'message' => $message, 'redirectUrl' => 'payment.php?request_id=' . $request_id];
 
-        $message = "ตอบตกลงข้อเสนอเรียบร้อยแล้ว! กรุณาดำเนินการชำระเงินมัดจำในขั้นตอนต่อไป";
     } else { // 'reject'
-        // --- การปฏิเสธ ---
-        // 1. อัปเดตสถานะใบสมัคร (job_applications) เป็น 'rejected'
+        // --- ส่วนของการ "ปฏิเสธ" ---
         $sql_reject = "UPDATE job_applications SET status = 'rejected' WHERE application_id = ?";
         $stmt_reject = $conn->prepare($sql_reject);
         $stmt_reject->bind_param("i", $application_id);
         $stmt_reject->execute();
         $stmt_reject->close();
-
-        // (อาจจะต้องตรวจสอบว่ามีใบเสนอราคาอื่นเหลือให้พิจารณาอีกหรือไม่ ถ้าไม่มีอาจจะเปลี่ยนสถานะงานกลับเป็น 'open')
-
+        
         $message = "ปฏิเสธข้อเสนอเรียบร้อยแล้ว";
+        $response = ['status' => 'success', 'message' => $message];
     }
 
     $conn->commit();
-    echo json_encode(['status' => 'success', 'message' => $message]);
+    echo json_encode($response);
+
 } catch (Exception $e) {
     $conn->rollback();
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);

@@ -71,8 +71,14 @@ $conn->close();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { font-family: 'Kanit', sans-serif; }
-        body { background-color: #f0f4f8; }
+        * {
+            font-family: 'Kanit', sans-serif;
+        }
+
+        body {
+            background-color: #f0f4f8;
+        }
+
         .proposal-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
@@ -96,7 +102,7 @@ $conn->close();
         <h2 class="text-2xl font-bold text-slate-700 mb-6">ข้อเสนอจากนักออกแบบ (<?= count($proposals) ?> รายการ)</h2>
 
         <?php if ($job_request['status'] !== 'proposed') : ?>
-             <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow" role="alert">
+            <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow" role="alert">
                 <p class="font-bold">สถานะ: ดำเนินการแล้ว</p>
                 <p>คุณได้ตัดสินใจสำหรับงานนี้เรียบร้อยแล้ว</p>
             </div>
@@ -135,7 +141,7 @@ $conn->close();
                                 <p class="text-slate-600 bg-gray-50 p-4 rounded-lg"><?= !empty($proposal['proposal_text']) ? htmlspecialchars($proposal['proposal_text']) : '<i>ไม่มีข้อความเพิ่มเติมจากนักออกแบบ</i>' ?></p>
 
                                 <div class="mt-5 pt-5 border-t border-gray-200 flex justify-end gap-3">
-                                    <button 
+                                    <button
                                         class="action-btn px-5 py-2 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
                                         data-action="reject"
                                         data-application-id="<?= $proposal['application_id'] ?>"
@@ -143,7 +149,7 @@ $conn->close();
                                         data-designer-id="<?= $proposal['designer_id'] ?>">
                                         <i class="fa fa-times mr-1"></i> ปฏิเสธ
                                     </button>
-                                    <button 
+                                    <button
                                         class="action-btn px-5 py-2 text-sm font-semibold text-white bg-green-500 rounded-lg hover:bg-green-600 transition-colors"
                                         data-action="accept"
                                         data-application-id="<?= $proposal['application_id'] ?>"
@@ -171,7 +177,7 @@ $conn->close();
             if (!isActionable) {
                 $('.action-btn').prop('disabled', true).addClass('opacity-50 cursor-not-allowed');
             }
-            
+
             $('.action-btn').on('click', function(e) {
                 e.preventDefault();
 
@@ -182,10 +188,10 @@ $conn->close();
                 const application_id = button.data('application-id');
                 const request_id = button.data('request-id');
                 const designer_id = button.data('designer-id');
-                
-                let confirmText = action === 'accept' 
-                    ? 'เมื่อตอบตกลงแล้ว จะต้องชำระเงินมัดจำเพื่อเริ่มงาน ยืนยันหรือไม่?' 
-                    : 'คุณแน่ใจหรือไม่ว่าต้องการปฏิเสธข้อเสนอนี้?';
+
+                let confirmText = action === 'accept' ?
+                    'เมื่อตอบตกลงแล้ว จะต้องชำระเงินมัดจำเพื่อเริ่มงาน ยืนยันหรือไม่?' :
+                    'คุณแน่ใจหรือไม่ว่าต้องการปฏิเสธข้อเสนอนี้?';
                 let confirmButtonText = action === 'accept' ? 'ใช่, ตอบตกลง' : 'ใช่, ปฏิเสธ';
 
                 Swal.fire({
@@ -202,7 +208,9 @@ $conn->close();
                         Swal.fire({
                             title: 'กำลังดำเนินการ...',
                             allowOutsideClick: false,
-                            didOpen: () => { Swal.showLoading() }
+                            didOpen: () => {
+                                Swal.showLoading()
+                            }
                         });
 
                         $.ajax({
@@ -218,15 +226,17 @@ $conn->close();
                             success: function(response) {
                                 if (response.status === 'success') {
                                     Swal.fire('สำเร็จ!', response.message, 'success').then(() => {
-                                        window.location.href = 'my_requests.php';
+                                        // [แก้ไข] ตรวจสอบว่ามี redirectUrl ส่งมาหรือไม่
+                                        if (response.redirectUrl) {
+                                            window.location.href = response.redirectUrl; // ไปยังหน้าชำระเงิน
+                                        } else {
+                                            window.location.href = 'my_requests.php'; // กลับไปหน้ารายการ (กรณีปฏิเสธ)
+                                        }
                                     });
                                 } else {
                                     Swal.fire('ผิดพลาด!', response.message, 'error');
                                 }
                             },
-                            error: function() {
-                                Swal.fire('ผิดพลาด!', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
-                            }
                         });
                     }
                 });
