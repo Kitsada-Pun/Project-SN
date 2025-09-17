@@ -24,23 +24,29 @@ if (empty($loggedInUserName)) {
         $stmt_user->close();
     }
 }
-// ดึงข้อมูลคำขอจ้างงานทั้งหมดของ Client คนนี้
+
+// --- START: MODIFIED CODE ---
+// ดึงข้อมูลคำขอจ้างงานทั้งหมดของ Client คนนี้ พร้อมดึงราคาที่เสนอ (offered_price) ถ้ามี
 $requests = [];
 $sql = "
     SELECT 
         cjr.request_id,
         cjr.title,
         cjr.description,
-        cjr.budget,
+        -- ใช้ offered_price ถ้ามีใบเสนอราคาที่ accepted, มิฉะนั้นใช้ budget เดิม
+        COALESCE(ja.offered_price, cjr.budget) AS budget,
         cjr.posted_date,
         cjr.status,
         u.user_id AS designer_id,
         CONCAT(u.first_name, ' ', u.last_name) AS designer_name
     FROM client_job_requests cjr
     LEFT JOIN users u ON cjr.designer_id = u.user_id
+    -- Join กับตาราง job_applications เพื่อดึงราคาที่ตอบตกลง
+    LEFT JOIN job_applications ja ON cjr.request_id = ja.request_id AND ja.status = 'accepted'
     WHERE cjr.client_id = ?
     ORDER BY cjr.posted_date DESC
 ";
+// --- END: MODIFIED CODE ---
 
 $stmt = $conn->prepare($sql);
 if ($stmt) {
@@ -53,7 +59,6 @@ if ($stmt) {
     die("เกิดข้อผิดพลาดในการดึงข้อมูล");
 }
 
-// --- [เพิ่มเข้ามา] นับจำนวนงานในแต่ละสถานะ ---
 $counts = [
     'open' => 0,
     'proposed' => 0,
@@ -70,7 +75,6 @@ foreach ($requests as $request) {
 }
 $conn->close();
 
-// --- [ปรับแก้] Function สำหรับแปลง status ---
 function getStatusInfoClient($status)
 {
     switch ($status) {
@@ -79,7 +83,7 @@ function getStatusInfoClient($status)
         case 'proposed':
             return ['text' => 'รอการพิจารณา', 'color' => 'bg-yellow-100 text-yellow-800', 'tab' => 'proposed'];
         case 'awaiting_confirmation':
-            return ['text' => 'รอชำระเงินมัดจำ', 'color' => 'bg-orange-100 text-orange-800', 'tab' => 'awaiting'];
+            return ['text' => 'รอชำระเงินมัดจำ', 'color' => 'bg-orange-100 text-orange-800', 'tab' => 'awaiting_deposit'];
         case 'assigned':
             return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'assigned'];
         case 'awaiting_final_payment':
@@ -138,14 +142,17 @@ function getStatusInfoClient($status)
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-xs font-bold text-white"><?= $counts['proposed'] ?></span>
                     <?php endif; ?>
                 </button>
-                <button @click="tab = 'awaiting'" :class="tab === 'awaiting' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
+                <button @click="tab = 'awaiting_deposit'" :class="tab === 'awaiting_deposit' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-money-bill-wave mr-1.5"></i> รอชำระเงิน
                     <?php if ($counts['awaiting_confirmation'] > 0) : ?>
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-orange-500 text-xs font-bold text-white"><?= $counts['awaiting_confirmation'] ?></span>
                     <?php endif; ?>
                 </button>
-                <button @click="tab = 'assigned'" :class="tab === 'assigned' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
+                <button @click="tab = 'assigned'" :class="tab === 'assigned' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-person-digging mr-1.5"></i> กำลังดำเนินการ
+                    <?php if ($counts['assigned'] > 0) : ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500 text-xs font-bold text-white"><?= $counts['assigned'] ?></span>
+                    <?php endif; ?>
                 </button>
                 <button @click="tab = 'awaiting_final'" :class="tab === 'awaiting_final' ? 'bg-white text-yellow-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-file-import mr-1.5"></i> รอตรวจสอบงาน
@@ -153,11 +160,17 @@ function getStatusInfoClient($status)
                         <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-yellow-500 text-xs font-bold text-white"><?= $counts['awaiting_final_payment'] ?></span>
                     <?php endif; ?>
                 </button>
-                <button @click="tab = 'completed'" :class="tab === 'completed' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
+                <button @click="tab = 'completed'" :class="tab === 'completed' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-circle-check mr-1.5"></i> เสร็จสมบูรณ์
+                    <?php if ($counts['completed'] > 0) : ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-green-500 text-xs font-bold text-white"><?= $counts['completed'] ?></span>
+                    <?php endif; ?>
                 </button>
-                 <button @click="tab = 'cancelled'" :class="tab === 'cancelled' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
+                <button @click="tab = 'cancelled'" :class="tab === 'cancelled' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-circle-xmark mr-1.5"></i> ยกเลิก
+                    <?php if ($counts['cancelled'] > 0) : ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-gray-500 text-xs font-bold text-white"><?= $counts['cancelled'] ?></span>
+                    <?php endif; ?>
                 </button>
             </div>
 
@@ -200,7 +213,7 @@ function getStatusInfoClient($status)
                                 </div>
                                 <div class="flex-shrink-0 sm:text-right sm:border-l sm:pl-6 border-slate-200/80 w-full sm:w-auto">
                                     <div class="text-2xl font-bold text-green-600 mb-4">
-                                        ฿<?= !empty($request['budget']) ? htmlspecialchars($request['budget']) : 'N/A' ?>
+                                        ฿<?= !empty($request['budget']) ? htmlspecialchars(number_format((float)$request['budget'], 2)) : 'N/A' ?>
                                     </div>
                                     <div class="flex flex-col sm:items-end gap-2">
 
@@ -233,7 +246,7 @@ function getStatusInfoClient($status)
                         <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีใบเสนอราคาที่ต้องพิจารณา</h3>
                         <p class="mt-1 text-slate-500">เมื่อนักออกแบบส่งข้อเสนอมา งานจะแสดงที่นี่</p>
                     </div>
-                    <div x-show="tab === 'awaiting' && <?= $counts['awaiting_confirmation'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                    <div x-show="tab === 'awaiting_deposit' && <?= $counts['awaiting_confirmation'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
                         <i class="fa-solid fa-money-bill-wave fa-3x text-slate-300"></i>
                         <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่รอชำระเงิน</h3>
                         <p class="mt-1 text-slate-500">หลังจากตอบตกลงใบเสนอราคา งานจะมาอยู่ที่นี่เพื่อรอชำระเงินมัดจำ</p>
@@ -292,7 +305,7 @@ function getStatusInfoClient($status)
                             }
                             Swal.fire({
                                 title: `<strong>รายละเอียดคำขอจ้างงาน</strong>`,
-                                html: `<div style="text-align: left; padding: 0 1rem;"><p><strong>ชื่องาน:</strong> ${details.title}</p><p><strong>ประเภทงาน:</strong> ${details.category_name || 'ไม่ได้ระบุ'}</p><p><strong>รายละเอียด:</strong></p><div style="white-space: pre-wrap; background-color: #f9f9f9; border: 1px solid #ddd; padding: 10px; border-radius: 5px; max-height: 150px; overflow-y: auto;">${details.description}</div>${attachmentHtml}<hr style="margin: 1rem 0;"><p><strong>งบประมาณ:</strong> ${details.budget ? details.budget + ' บาท' : 'ไม่ได้ระบุ'}</p><p><strong>ส่งมอบงานภายใน:</strong> ${deadline}</p></div>`,
+                                html: `<div style="text-align: left; padding: 0 1rem;"><p><strong>ชื่องาน:</strong> ${details.title}</p><p><strong>ประเภทงาน:</strong> ${details.category_name || 'ไม่ได้ระบุ'}</p><p><strong>รายละเอียด:</strong></p><div style="white-space: pre-wrap; background-color: #f9f9f9; border: 1px solid #ddd; padding: 10px; border-radius: 5px; max-height: 150px; overflow-y: auto;">${details.description}</div>${attachmentHtml}<hr style="margin: 1rem 0;"><p><strong>งบประมาณ:</strong> ${details.budget ? '฿' + parseFloat(details.budget).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'ไม่ได้ระบุ'}</p><p><strong>ส่งมอบงานภายใน:</strong> ${deadline}</p></div>`,
                                 confirmButtonText: 'ปิด',
                                 width: '600px'
                             });

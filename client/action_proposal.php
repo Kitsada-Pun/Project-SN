@@ -1,107 +1,109 @@
 <?php
 session_start();
-header('Content-Type: application/json');
-
 require_once '../connect.php';
 
-// ตรวจสอบว่าผู้ใช้ล็อกอินในฐานะ client หรือไม่
-if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'client') {
-    echo json_encode(['status' => 'error', 'message' => 'Unauthorized access.']);
-    exit();
-}
+header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['status' => 'error', 'message' => 'Invalid request method.']);
+if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'client') {
+    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
     exit();
 }
 
 $client_id = $_SESSION['user_id'];
-$application_id = filter_input(INPUT_POST, 'application_id', FILTER_VALIDATE_INT);
-$request_id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
-$designer_id = filter_input(INPUT_POST, 'designer_id', FILTER_VALIDATE_INT);
+$application_id = $_POST['application_id'] ?? 0;
+$request_id = $_POST['request_id'] ?? 0;
+$designer_id = $_POST['designer_id'] ?? 0;
 $action = $_POST['action'] ?? '';
 
-if (!$application_id || !$request_id || !$designer_id || !in_array($action, ['accept', 'reject'])) {
-    echo json_encode(['status' => 'error', 'message' => 'ข้อมูลไม่ถูกต้อง']);
+if (empty($application_id) || empty($request_id) || empty($action) || empty($designer_id)) {
+    echo json_encode(['status' => 'error', 'message' => 'Invalid input']);
     exit();
 }
 
 $conn->begin_transaction();
 
 try {
-    // ตรวจสอบว่าเป็นเจ้าของงานและงานยังรอการพิจารณาอยู่
+    // Verify that the job request belongs to the client
     $sql_verify = "SELECT status FROM client_job_requests WHERE request_id = ? AND client_id = ?";
     $stmt_verify = $conn->prepare($sql_verify);
     $stmt_verify->bind_param("ii", $request_id, $client_id);
     $stmt_verify->execute();
-    $result = $stmt_verify->get_result();
-    if ($result->num_rows === 0) {
-        throw new Exception('ไม่พบคำของาน หรือคุณไม่มีสิทธิ์จัดการ');
+    $result_verify = $stmt_verify->get_result();
+
+    if ($result_verify->num_rows === 0) {
+        throw new Exception('Job request not found or you do not have permission.');
     }
-    $job_info = $result->fetch_assoc();
-    if ($job_info['status'] !== 'proposed') {
-        throw new Exception('การตัดสินใจนี้ได้ถูกดำเนินการไปแล้ว');
+    $job_request = $result_verify->fetch_assoc();
+    $stmt_verify->close();
+
+    // Check if the job is in a state that can be actioned upon
+    if (!in_array($job_request['status'], ['open', 'proposed'])) {
+        throw new Exception('This job has already been processed.');
     }
+
 
     if ($action === 'accept') {
-        // --- ส่วนของการ "ตอบตกลง" ---
+        // 1. Update client_job_requests status to 'awaiting_confirmation'
+        $sql_update_job = "UPDATE client_job_requests SET status = 'awaiting_confirmation', designer_id = ? WHERE request_id = ?";
+        $stmt_update_job = $conn->prepare($sql_update_job);
+        $stmt_update_job->bind_param("ii", $designer_id, $request_id);
+        if (!$stmt_update_job->execute()) {
+            throw new Exception("Error updating job request: " . $stmt_update_job->error);
+        }
+        $stmt_update_job->close();
 
-        // 1. อัปเดตสถานะใบสมัครที่ถูกเลือกเป็น 'accepted'
-        $sql_accept = "UPDATE job_applications SET status = 'accepted' WHERE application_id = ?";
-        $stmt_accept = $conn->prepare($sql_accept);
-        $stmt_accept->bind_param("i", $application_id);
-        $stmt_accept->execute();
-        $stmt_accept->close();
+        // 2. Update the accepted job_application status to 'accepted'
+        $sql_accept_app = "UPDATE job_applications SET status = 'accepted' WHERE application_id = ?";
+        $stmt_accept_app = $conn->prepare($sql_accept_app);
+        $stmt_accept_app->bind_param("i", $application_id);
+        if (!$stmt_accept_app->execute()) {
+            throw new Exception("Error accepting application: " . $stmt_accept_app->error);
+        }
+        $stmt_accept_app->close();
 
-        // 2. [แก้ไข] อัปเดตสถานะของงาน (client_job_requests) เป็น 'awaiting_deposit_verification'
-        $new_status = 'awaiting_deposit_verification';
-        $sql_update_req = "UPDATE client_job_requests SET status = ?, designer_id = ? WHERE request_id = ?";
-        $stmt_update_req = $conn->prepare($sql_update_req);
-        $stmt_update_req->bind_param("sii", $new_status, $designer_id, $request_id);
-        $stmt_update_req->execute();
-        $stmt_update_req->close();
-        
-        // 3. สร้างสัญญา (contract) ในสถานะ 'pending'
-        $sql_get_price = "SELECT offered_price FROM job_applications WHERE application_id = ?";
-        $stmt_price = $conn->prepare($sql_get_price);
-        $stmt_price->bind_param("i", $application_id);
-        $stmt_price->execute();
-        $price_result = $stmt_price->get_result()->fetch_assoc();
-        $agreed_price = $price_result['offered_price'];
-        $stmt_price->close();
-
-        $start_date = date('Y-m-d');
-        $sql_insert_contract = "INSERT INTO contracts (request_id, designer_id, client_id, agreed_price, start_date, contract_status, payment_status) VALUES (?, ?, ?, ?, ?, 'pending', 'pending')";
-        $stmt_insert_contract = $conn->prepare($sql_insert_contract);
-        $stmt_insert_contract->bind_param("iiids", $request_id, $designer_id, $client_id, $agreed_price, $start_date);
-        $stmt_insert_contract->execute();
-        $stmt_insert_contract->close();
-        
-        // 4. ปฏิเสธใบสมัครอื่นๆ ทั้งหมดสำหรับงานนี้โดยอัตโนมัติ
+        // 3. Reject all other applications for this job request
         $sql_reject_others = "UPDATE job_applications SET status = 'rejected' WHERE request_id = ? AND application_id != ?";
         $stmt_reject_others = $conn->prepare($sql_reject_others);
         $stmt_reject_others->bind_param("ii", $request_id, $application_id);
-        $stmt_reject_others->execute();
+        if (!$stmt_reject_others->execute()) {
+            throw new Exception("Error rejecting other applications: " . $stmt_reject_others->error);
+        }
         $stmt_reject_others->close();
         
-        $message = "ตอบตกลงข้อเสนอเรียบร้อยแล้ว! ระบบกำลังนำคุณไปสู่หน้าชำระเงินมัดจำ";
-        // [แก้ไข] เพิ่ม redirectUrl เพื่อให้ JavaScript รู้ว่าต้องไปหน้าไหนต่อ
-        $response = ['status' => 'success', 'message' => $message, 'redirectUrl' => 'payment.php?request_id=' . $request_id];
+        $conn->commit();
+        echo json_encode([
+            'status' => 'success', 
+            'message' => 'ตอบรับข้อเสนอเรียบร้อยแล้ว! กรุณาชำระเงินมัดจำเพื่อเริ่มงาน',
+            'redirectUrl' => 'payment.php?request_id=' . $request_id
+        ]);
 
-    } else { // 'reject'
-        // --- ส่วนของการ "ปฏิเสธ" ---
-        $sql_reject = "UPDATE job_applications SET status = 'rejected' WHERE application_id = ?";
-        $stmt_reject = $conn->prepare($sql_reject);
-        $stmt_reject->bind_param("i", $application_id);
-        $stmt_reject->execute();
-        $stmt_reject->close();
+    } elseif ($action === 'reject') {
+        // Update the job request status to 'cancelled'
+        $sql_update_job = "UPDATE client_job_requests SET status = 'cancelled' WHERE request_id = ?";
+        $stmt_update_job = $conn->prepare($sql_update_job);
+        $stmt_update_job->bind_param("i", $request_id);
+        if (!$stmt_update_job->execute()) {
+            throw new Exception("Error cancelling job request: " . $stmt_update_job->error);
+        }
+        $stmt_update_job->close();
+
+        // Reject all applications for this job request
+        $sql_reject_all = "UPDATE job_applications SET status = 'rejected' WHERE request_id = ?";
+        $stmt_reject_all = $conn->prepare($sql_reject_all);
+        $stmt_reject_all->bind_param("i", $request_id);
+        $stmt_reject_all->execute();
+        $stmt_reject_all->close();
+
+        $conn->commit();
+        echo json_encode([
+            'status' => 'success', 
+            'message' => 'ข้อเสนอถูกปฏิเสธ และงานนี้ถูกยกเลิกแล้ว',
+            'redirectUrl' => 'my_requests.php'
+        ]);
         
-        $message = "ปฏิเสธข้อเสนอเรียบร้อยแล้ว";
-        $response = ['status' => 'success', 'message' => $message];
+    } else {
+        throw new Exception('Invalid action.');
     }
-
-    $conn->commit();
-    echo json_encode($response);
 
 } catch (Exception $e) {
     $conn->rollback();
@@ -109,3 +111,4 @@ try {
 }
 
 $conn->close();
+?>
