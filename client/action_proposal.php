@@ -42,7 +42,7 @@ try {
 
     if ($action === 'accept') {
         // --- START: MODIFIED CODE ---
-        // 1. Update client_job_requests status to 'awaiting_deposit_verification'
+        // 1. Update client_job_requests status to 'awaiting_deposit_verification' ตามที่คุณกำหนด
         $sql_update_job = "UPDATE client_job_requests SET status = 'awaiting_deposit_verification', designer_id = ? WHERE request_id = ?";
         // --- END: MODIFIED CODE ---
         $stmt_update_job = $conn->prepare($sql_update_job);
@@ -81,6 +81,7 @@ try {
         $sql_update_job = "UPDATE client_job_requests SET status = 'cancelled' WHERE request_id = ?";
         $stmt_update_job = $conn->prepare($sql_update_job);
         $stmt_update_job->bind_param("i", $request_id);
+        // ... (โค้ดส่วนที่เหลือเหมือนเดิม)
         if (!$stmt_update_job->execute()) {
             throw new Exception("Error cancelling job request: " . $stmt_update_job->error);
         }
