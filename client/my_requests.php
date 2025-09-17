@@ -57,8 +57,9 @@ if ($stmt) {
 $counts = [
     'open' => 0,
     'proposed' => 0,
-    'awaiting_confirmation' => 0, // <-- เพิ่มบรรทัดนี้เข้ามา
+    'awaiting_confirmation' => 0, // <-- เพิ่มสถานะนี้เข้ามาด้วย
     'assigned' => 0,
+    'awaiting_final_payment' => 0,
     'completed' => 0,
     'cancelled' => 0,
 ];
@@ -85,6 +86,10 @@ function getStatusInfoClient($status)
 
         case 'assigned':
             return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'assigned'];
+            // --- เพิ่ม Case ใหม่ตรงนี้ ---
+        case 'awaiting_final_payment':
+            return ['text' => 'รอตรวจสอบงาน', 'color' => 'bg-yellow-100 text-yellow-800', 'tab' => 'awaiting_final'];
+            // --------------------------
         case 'completed':
             return ['text' => 'เสร็จสมบูรณ์', 'color' => 'bg-green-100 text-green-800', 'tab' => 'completed'];
         case 'cancelled':
@@ -256,6 +261,12 @@ function getStatusInfoClient($status)
                 <button @click="tab = 'assigned'" :class="tab === 'assigned' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-person-digging mr-1.5"></i> กำลังดำเนินการ
                 </button>
+                <button @click="tab = 'awaiting_final'" :class="tab === 'awaiting_final' ? 'bg-white text-yellow-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
+                    <i class="fa-solid fa-file-import mr-1.5"></i> รอตรวจสอบงาน
+                    <?php if ($counts['awaiting_final_payment'] > 0): ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-yellow-500 text-xs font-bold text-white"><?= $counts['awaiting_final_payment'] ?></span>
+                    <?php endif; ?>
+                </button>
                 <button @click="tab = 'completed'" :class="tab === 'completed' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-circle-check mr-1.5"></i> เสร็จสมบูรณ์
                 </button>
@@ -306,14 +317,17 @@ function getStatusInfoClient($status)
                                             <a href="review_proposal.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-semibold hover:bg-yellow-600">
                                                 <i class="fa-solid fa-file-alt mr-1"></i> พิจารณาข้อเสนอ
                                             </a>
-
                                         <?php elseif ($request['status'] === 'awaiting_confirmation'): ?>
                                             <a href="payment.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600">
                                                 <i class="fa-solid fa-credit-card mr-1"></i> ชำระเงินมัดจำ
                                             </a>
                                         <?php elseif ($request['status'] === 'assigned'): ?>
-                                            <a href="../messages.php?to_user=<?= $request['designer_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600">
+                                            <a href="../messages.php?to_user=<?= $request['designer_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600">
                                                 <i class="fa-solid fa-comments mr-1"></i> พูดคุยกับนักออกแบบ
+                                            </a>
+                                        <?php elseif ($request['status'] === 'awaiting_final_payment'): ?>
+                                            <a href="review_work.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-semibold hover:bg-yellow-600">
+                                                <i class="fa-solid fa-file-circle-check mr-1"></i> ตรวจสอบงานและชำระเงิน
                                             </a>
                                         <?php else: ?>
                                             <a href="../job_detail.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-semibold hover:bg-slate-700">
