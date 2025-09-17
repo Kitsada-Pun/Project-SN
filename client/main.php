@@ -231,7 +231,5 @@ include '../includes/header.php';
 </main>
 
 <?php
-// --- เรียกใช้ Footer ---
-$condb->close();
 include '../includes/footer.php';
 ?>
