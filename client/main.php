@@ -196,7 +196,7 @@ include '../includes/header.php';
                     <?php foreach ($job_postings_from_others as $job): ?>
                         <div class="card-item flex flex-col">
                             <?php
-                            $image_path = str_replace('../', '', $job['job_image_path']);
+                            $image_path = str_replace('', '', $job['job_image_path']);
                             $image_source = (!empty($image_path) && file_exists($image_path)) ? htmlspecialchars($image_path) : '../dist/img/pdpa02.jpg';
                             ?>
                             <a href="../job_detail.php?id=<?= $job['post_id'] ?>&type=posting">

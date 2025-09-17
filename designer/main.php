@@ -202,7 +202,7 @@ $condb->close();
                         <div class="card-item flex flex-col">
                             <?php
                             // [จุดที่แก้ไข] แก้ไข path รูปภาพให้ถูกต้อง
-                            $image_path = !empty($job['job_image_path']) ? str_replace('../', '', $job['job_image_path']) : '';
+                            $image_path = !empty($job['job_image_path']) ? str_replace('', '', $job['job_image_path']) : '';
                             $image_source = file_exists($image_path) ? htmlspecialchars($image_path) : '../dist/img/pdpa02.jpg';
                             ?>
                             <a href="../job_detail.php?id=<?= $job['post_id'] ?>&type=posting">
@@ -237,8 +237,6 @@ $condb->close();
     <script>
         // ... (JavaScript เดิมของคุณไม่ต้องแก้ไข) ...
     </script>
-    <?php include '../includes/footer.php'; ?>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </body>
 
 </html>
