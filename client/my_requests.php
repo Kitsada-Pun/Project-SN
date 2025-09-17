@@ -57,7 +57,7 @@ if ($stmt) {
 $counts = [
     'open' => 0,
     'proposed' => 0,
-    'awaiting_confirmation' => 0, // <-- เพิ่มบรรทัดนี้
+    'awaiting_confirmation' => 0, // <-- เพิ่มบรรทัดนี้เข้ามา
     'assigned' => 0,
     'completed' => 0,
     'cancelled' => 0,
@@ -77,10 +77,12 @@ function getStatusInfoClient($status)
             return ['text' => 'เปิดรับข้อเสนอ', 'color' => 'bg-gray-200 text-gray-800', 'tab' => 'open'];
         case 'proposed':
             return ['text' => 'รอการพิจารณา', 'color' => 'bg-yellow-100 text-yellow-800', 'tab' => 'proposed'];
+
             // --- เพิ่ม Case ใหม่ตรงนี้ ---
         case 'awaiting_confirmation':
             return ['text' => 'รอชำระเงินมัดจำ', 'color' => 'bg-orange-100 text-orange-800', 'tab' => 'awaiting'];
             // --------------------------
+
         case 'assigned':
             return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'assigned'];
         case 'completed':
