@@ -36,15 +36,15 @@ try {
     $job_request = $result_verify->fetch_assoc();
     $stmt_verify->close();
 
-    // Check if the job is in a state that can be actioned upon
     if (!in_array($job_request['status'], ['open', 'proposed'])) {
         throw new Exception('This job has already been processed.');
     }
 
-
     if ($action === 'accept') {
-        // 1. Update client_job_requests status to 'awaiting_confirmation'
-        $sql_update_job = "UPDATE client_job_requests SET status = 'awaiting_confirmation', designer_id = ? WHERE request_id = ?";
+        // --- START: MODIFIED CODE ---
+        // 1. Update client_job_requests status to 'awaiting_deposit_verification'
+        $sql_update_job = "UPDATE client_job_requests SET status = 'awaiting_deposit_verification', designer_id = ? WHERE request_id = ?";
+        // --- END: MODIFIED CODE ---
         $stmt_update_job = $conn->prepare($sql_update_job);
         $stmt_update_job->bind_param("ii", $designer_id, $request_id);
         if (!$stmt_update_job->execute()) {
@@ -78,7 +78,6 @@ try {
         ]);
 
     } elseif ($action === 'reject') {
-        // Update the job request status to 'cancelled'
         $sql_update_job = "UPDATE client_job_requests SET status = 'cancelled' WHERE request_id = ?";
         $stmt_update_job = $conn->prepare($sql_update_job);
         $stmt_update_job->bind_param("i", $request_id);
@@ -87,7 +86,6 @@ try {
         }
         $stmt_update_job->close();
 
-        // Reject all applications for this job request
         $sql_reject_all = "UPDATE job_applications SET status = 'rejected' WHERE request_id = ?";
         $stmt_reject_all = $conn->prepare($sql_reject_all);
         $stmt_reject_all->bind_param("i", $request_id);

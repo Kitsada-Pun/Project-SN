@@ -10,8 +10,10 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'client') {
 require_once '../connect.php';
 
 $client_id = $_SESSION['user_id'];
-$loggedInUserName = $_SESSION['username'] ?? '';
-if (empty($loggedInUserName)) {
+// --- START: MODIFIED CODE ---
+// แก้ไขการดึงข้อมูลชื่อผู้ใช้ให้กระชับและถูกต้อง
+$loggedInUserName = $_SESSION['full_name'] ?? '';
+if (empty($loggedInUserName) && isset($_SESSION['user_id'])) {
     $sql_user = "SELECT first_name, last_name FROM users WHERE user_id = ?";
     $stmt_user = $conn->prepare($sql_user);
     if ($stmt_user) {
@@ -19,13 +21,15 @@ if (empty($loggedInUserName)) {
         $stmt_user->execute();
         $result_user = $stmt_user->get_result();
         if ($user_info = $result_user->fetch_assoc()) {
-            $loggedInUserName = $user_info['first_name'] . ' ' . $user_info['last_name'];
+            $_SESSION['full_name'] = $user_info['first_name'] . ' ' . $user_info['last_name'];
+            $loggedInUserName = $_SESSION['full_name'];
         }
         $stmt_user->close();
     }
 }
+// --- END: MODIFIED CODE ---
 
-// --- START: MODIFIED CODE ---
+
 // ดึงข้อมูลคำขอจ้างงานทั้งหมดของ Client คนนี้ พร้อมดึงราคาที่เสนอ (offered_price) ถ้ามี
 $requests = [];
 $sql = "
@@ -46,7 +50,6 @@ $sql = "
     WHERE cjr.client_id = ?
     ORDER BY cjr.posted_date DESC
 ";
-// --- END: MODIFIED CODE ---
 
 $stmt = $conn->prepare($sql);
 if ($stmt) {
@@ -62,7 +65,7 @@ if ($stmt) {
 $counts = [
     'open' => 0,
     'proposed' => 0,
-    'awaiting_confirmation' => 0,
+    'awaiting_deposit_verification' => 0,
     'assigned' => 0,
     'awaiting_final_payment' => 0,
     'completed' => 0,
@@ -82,7 +85,7 @@ function getStatusInfoClient($status)
             return ['text' => 'เปิดรับข้อเสนอ', 'color' => 'bg-gray-200 text-gray-800', 'tab' => 'open'];
         case 'proposed':
             return ['text' => 'รอการพิจารณา', 'color' => 'bg-yellow-100 text-yellow-800', 'tab' => 'proposed'];
-        case 'awaiting_confirmation':
+        case 'awaiting_deposit_verification':
             return ['text' => 'รอชำระเงินมัดจำ', 'color' => 'bg-orange-100 text-orange-800', 'tab' => 'awaiting_deposit'];
         case 'assigned':
             return ['text' => 'กำลังดำเนินการ', 'color' => 'bg-blue-100 text-blue-800', 'tab' => 'assigned'];
@@ -99,7 +102,6 @@ function getStatusInfoClient($status)
 ?>
 <!DOCTYPE html>
 <html lang="th" class="h-full">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -112,120 +114,12 @@ function getStatusInfoClient($status)
         * {
             font-family: 'Kanit', sans-serif;
         }
-        body {
-            background: linear-gradient(135deg, #f0f4f8 0%, #e8edf3 100%);
-            color: #2c3e50;
-            overflow-x: hidden;
+        .line-clamp-2 {
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
         }
-
-        .navbar {
-            background-color: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-        }
-
-        .btn-primary {
-            background: linear-gradient(45deg, #0a5f97 0%, #0d96d2 100%);
-            color: white;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(13, 150, 210, 0.3);
-        }
-
-        .btn-primary:hover {
-            background: linear-gradient(45deg, #0d96d2 0%, #0a5f97 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(13, 150, 210, 0.5);
-        }
-
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 10px rgba(108, 117, 125, 0.2);
-        }
-
-        .btn-secondary:hover {
-            background-color: #5a6268;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(108, 117, 125, 0.4);
-        }
-
-        .btn-danger {
-            background-color: #ef4444;
-            color: white;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
-        }
-
-        .btn-danger:hover {
-            background-color: #dc2626;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.5);
-        }
-
-        .text-gradient {
-            background: linear-gradient(45deg, #0a5f97, #0d96d2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .pixellink-logo,
-        .pixellink-logo-footer {
-            font-weight: 700;
-            font-size: 2.25rem;
-            background: linear-gradient(45deg, #0a5f97, #0d96d2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .pixellink-logo b,
-        .pixellink-logo-footer b {
-            color: #0d96d2;
-        }
-
-        .card-item {
-            background: white;
-            border-radius: 1rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .card-item:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.12);
-        }
-
-        .card-image {
-            width: 100%;
-            aspect-ratio: 16/9;
-            object-fit: cover;
-            border-top-left-radius: 1rem;
-            border-top-right-radius: 1rem;
-        }
-
-        .hero-section {
-            background-image: url('dist/img/cover.png');
-            background-size: cover;
-            background-position: center;
-            position: relative;
-            z-index: 1;
-            padding: 8rem 0;
-        }
-
-        .hero-section::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: -1;
-        }
-
     </style>
 </head>
 
@@ -252,8 +146,8 @@ function getStatusInfoClient($status)
                 </button>
                 <button @click="tab = 'awaiting_deposit'" :class="tab === 'awaiting_deposit' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
                     <i class="fa-solid fa-money-bill-wave mr-1.5"></i> รอชำระเงิน
-                    <?php if ($counts['awaiting_confirmation'] > 0) : ?>
-                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-orange-500 text-xs font-bold text-white"><?= $counts['awaiting_confirmation'] ?></span>
+                    <?php if ($counts['awaiting_deposit_verification'] > 0) : ?>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-orange-500 text-xs font-bold text-white"><?= $counts['awaiting_deposit_verification'] ?></span>
                     <?php endif; ?>
                 </button>
                 <button @click="tab = 'assigned'" :class="tab === 'assigned' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:bg-slate-300/60'" class="relative inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg transition-all">
@@ -281,7 +175,6 @@ function getStatusInfoClient($status)
                     <?php endif; ?>
                 </button>
             </div>
-
             <div class="space-y-5">
                 <?php if (empty($requests)) : ?>
                     <div class="text-center bg-white rounded-lg shadow-sm p-12">
@@ -324,12 +217,11 @@ function getStatusInfoClient($status)
                                         ฿<?= !empty($request['budget']) ? htmlspecialchars(number_format((float)$request['budget'], 2)) : 'N/A' ?>
                                     </div>
                                     <div class="flex flex-col sm:items-end gap-2">
-
                                         <?php if ($request['status'] === 'proposed') : ?>
                                             <a href="review_proposal.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm font-semibold hover:bg-yellow-600">
                                                 <i class="fa-solid fa-file-alt mr-1"></i> พิจารณาข้อเสนอ
                                             </a>
-                                        <?php elseif ($request['status'] === 'awaiting_confirmation') : ?>
+                                        <?php elseif ($request['status'] === 'awaiting_deposit_verification') : ?>
                                             <a href="payment.php?request_id=<?= $request['request_id'] ?>" class="w-full sm:w-auto text-center px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600">
                                                 <i class="fa-solid fa-credit-card mr-1"></i> ชำระเงินมัดจำ
                                             </a>
@@ -342,19 +234,17 @@ function getStatusInfoClient($status)
                                                 <i class="fa-solid fa-file-circle-check mr-1"></i> ตรวจสอบงานและชำระเงิน
                                             </a>
                                         <?php endif; ?>
-                                        
                                     </div>
                                 </div>
                             </div>
                         </div>
                     <?php endforeach; ?>
-
                     <div x-show="tab === 'proposed' && <?= $counts['proposed'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
                         <i class="fa-solid fa-file-alt fa-3x text-slate-300"></i>
                         <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีใบเสนอราคาที่ต้องพิจารณา</h3>
                         <p class="mt-1 text-slate-500">เมื่อนักออกแบบส่งข้อเสนอมา งานจะแสดงที่นี่</p>
                     </div>
-                    <div x-show="tab === 'awaiting_deposit' && <?= $counts['awaiting_confirmation'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
+                    <div x-show="tab === 'awaiting_deposit' && <?= $counts['awaiting_deposit_verification'] ?> === 0" class="text-center bg-white rounded-lg shadow-sm p-12">
                         <i class="fa-solid fa-money-bill-wave fa-3x text-slate-300"></i>
                         <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่รอชำระเงิน</h3>
                         <p class="mt-1 text-slate-500">หลังจากตอบตกลงใบเสนอราคา งานจะมาอยู่ที่นี่เพื่อรอชำระเงินมัดจำ</p>
@@ -379,14 +269,11 @@ function getStatusInfoClient($status)
                         <h3 class="mt-4 text-xl font-semibold text-slate-700">ไม่มีงานที่ถูกยกเลิก</h3>
                         <p class="mt-1 text-slate-500">งานที่คุณปฏิเสธหรือยกเลิกจะแสดงในหน้านี้</p>
                     </div>
-
                 <?php endif; ?>
             </div>
         </div>
     </main>
-
     <?php include '../includes/footer.php'; ?>
-    
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
@@ -428,7 +315,5 @@ function getStatusInfoClient($status)
             });
         });
     </script>
-
 </body>
-
 </html>
