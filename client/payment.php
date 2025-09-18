@@ -16,8 +16,6 @@ if ($request_id === 0) {
     die("ไม่พบรหัสคำของาน");
 }
 
-// --- START: MODIFIED CODE ---
-// ดึงข้อมูลที่จำเป็นสำหรับหน้าชำระเงิน รวมถึงข้อมูลบัญชีของ Designer
 $payment_info = null;
 $sql = "
     SELECT 
@@ -44,13 +42,14 @@ if ($stmt) {
     if ($result->num_rows > 0) {
         $payment_info = $result->fetch_assoc();
     } else {
-        die("ไม่พบข้อมูลงาน หรือคุณไม่มีสิทธิ์ในการเข้าถึง");
+        die("ไม่พบข้อมูลงาน หรือคุณไม่มีสิทธิ์ในการเข้าถึงงานนี้ (ID: {$request_id})");
     }
     $stmt->close();
 } else {
-    die("เกิดข้อผิดพลาดในการดึงข้อมูล");
+    die("เกิดข้อผิดพลาดในการเตรียมคำสั่ง SQL");
 }
 
+// --- START: MODIFIED CODE ---
 // ตรวจสอบสถานะของงาน ต้องเป็น 'awaiting_deposit_verification' เท่านั้น
 if ($payment_info['status'] !== 'awaiting_deposit_verification') {
     $_SESSION['message'] = ['type' => 'error', 'text' => 'งานนี้ไม่อยู่ในสถานะรอการชำระเงิน'];
@@ -130,6 +129,7 @@ $conn->close();
                         <p class="text-center text-red-500 p-4 bg-red-50 rounded-lg">นักออกแบบยังไม่ได้เพิ่มข้อมูลการชำระเงิน กรุณาติดต่อนักออกแบบผ่านทางแชท</p>
                     <?php endif; ?>
                 </div>
+                
                 <form action="submit_payment.php" method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="request_id" value="<?= $request_id ?>">
                     <div>
@@ -149,7 +149,6 @@ $conn->close();
                         </div>
                         <p id="file-name" class="text-sm text-slate-600 mt-2 text-center"></p>
                     </div>
-
                     <div class="mt-8">
                         <button type="submit" class="w-full text-center px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400" <?= (empty($payment_info['bank_name'])) ? 'disabled' : '' ?>>
                             <i class="fa-solid fa-paper-plane mr-2"></i>ส่งหลักฐานการชำระเงิน
@@ -159,29 +158,24 @@ $conn->close();
             </div>
         </div>
     </main>
-
     <?php include '../includes/footer.php'; ?>
-
     <script>
-    document.getElementById('file-upload-input').addEventListener('change', function(event) {
-        const file = event.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            
-            reader.onload = function(e) {
-                document.getElementById('file-preview').setAttribute('src', e.target.result);
-                document.getElementById('file-upload-text').classList.add('hidden');
-                document.getElementById('file-preview-container').classList.remove('hidden');
+        document.getElementById('file-upload-input').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('file-preview').setAttribute('src', e.target.result);
+                    document.getElementById('file-upload-text').classList.add('hidden');
+                    document.getElementById('file-preview-container').classList.remove('hidden');
+                }
+                reader.readAsDataURL(file);
+                document.getElementById('file-name').textContent = 'ไฟล์ที่เลือก: ' + file.name;
             }
-            
-            reader.readAsDataURL(file);
-            document.getElementById('file-name').textContent = 'ไฟล์ที่เลือก: ' + file.name;
-        }
-    });
-
-    document.getElementById('file-upload-container').addEventListener('click', function() {
-        document.getElementById('file-upload-input').click();
-    });
+        });
+        document.getElementById('file-upload-container').addEventListener('click', function() {
+            document.getElementById('file-upload-input').click();
+        });
     </script>
 </body>
 </html>
